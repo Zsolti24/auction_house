@@ -152,7 +152,7 @@ for 25 s replaces the connection, because a proxy can keep a dead stream looking
 ## Tests
 
 ```bash
-pnpm test                               # everything (134 unit/integration + 5 browser tests)
+pnpm test                               # everything (138 unit/integration + 6 browser tests)
 pnpm --filter @auction/server test      # one package
 pnpm --filter @auction/e2e test         # only the browser tests (~1 minute: auctions end in real time)
 ```
@@ -163,7 +163,7 @@ pnpm --filter @auction/e2e test         # only the browser tests (~1 minute: auc
 | [server/test/domain.test.ts](packages/server/test/domain.test.ts) | Pure rules: end-time boundary, minimum next bid, TOO_LOW vs OUTBID vs AUCTION_ENDED, anti-sniping at 30.001 s / 30 s / 1 ms |
 | [server/test/auctionService.test.ts](packages/server/test/auctionService.test.ts) | Service + real SQLite with a fake clock: main flow, same-moment bids, anti-sniping chains, seller key, persistence across a restart |
 | [server/test/http.test.ts](packages/server/test/http.test.ts) | Real HTTP on a random port: everything below, plus SSE pushes, error codes, heartbeat, the auction list (live vs. ended split, order, leader / winner, pushes on create / bid, an auction moving to "ended" by itself) |
-| [e2e/tests](packages/e2e/tests/auction.spec.ts) | **Browser tests** (Playwright, Chromium, one browser context per person): the four required scenarios through the real UI, plus a reload — see below |
+| [e2e/tests](packages/e2e/tests/auction.spec.ts) | **Browser tests** (Playwright, Chromium, one browser context per person): the four required scenarios through the real UI, plus a reload and a too-large bid amount — see below |
 | [web/test](packages/web/test) | View logic: which snapshot is newer, leading / outbid / won / lost, when to fire the "you've been outbid" toast, countdown formatting |
 
 The four required scenarios, over real HTTP:

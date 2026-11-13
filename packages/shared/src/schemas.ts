@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { MAX_AMOUNT_CENTS } from "./constants";
+import { formatCents } from "./money";
 
 const amountCents = (label: string) =>
   z
     .number({ error: `${label} is required` })
     .int(`${label} must be in whole cents`)
     .positive(`${label} must be greater than €0`)
-    .max(MAX_AMOUNT_CENTS, `${label} is too large`);
+    .max(MAX_AMOUNT_CENTS, `${label} is too large — the maximum is ${formatCents(MAX_AMOUNT_CENTS)}`);
 
 /** One rule for every display name (bidder and seller): 1–50 characters after trimming. */
 export const DISPLAY_NAME_MAX = 50;

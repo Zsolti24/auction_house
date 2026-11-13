@@ -211,3 +211,8 @@ output was wrong or weak, how it was caught and what changed.
   bid the next amount — two valid bids in a row, not a race. Fixed by holding both requests until
   both were sent and then releasing them together. The other two checked text that also appears
   in the toast, so they found it twice; fixed by looking only at the page itself.
+- **The biggest allowed price didn't fit on the page.** Right after adding the "amount too large"
+  message, I noticed that the largest amount that *is* allowed, €1,000,000,000.00, stuck out of
+  the price box. The agent had tested the error message, but never looked at how the maximum
+  amount itself is displayed. Fixed by letting prices shrink to fit their box (normal prices keep
+  their size), and checked on desktop and phone width with a maximum-size bid.

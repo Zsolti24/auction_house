@@ -17,17 +17,36 @@ export function ItemDetails({ snapshot }: { snapshot: AuctionSnapshot }) {
       </h1>
       {snapshot.sellerName && <p className="mt-1 text-sm text-muted wrap-anywhere">Offered by {snapshot.sellerName}</p>}
       <p className="mt-4 whitespace-pre-line leading-relaxed text-ink/80 wrap-anywhere">{snapshot.description}</p>
-      <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
-        <div className="glass-control rounded-2xl px-4 py-3">
-          <dt className="text-muted">Starting price</dt>
-          <dd className="mt-0.5 font-semibold tabular-nums">{formatCents(snapshot.startingPriceCents)}</dd>
-        </div>
-        <div className="glass-control rounded-2xl px-4 py-3">
-          <dt className="text-muted">Minimum increment</dt>
-          <dd className="mt-0.5 font-semibold tabular-nums">{formatCents(snapshot.minIncrementCents)}</dd>
-        </div>
-      </dl>
+      {/* Side by side when the card is wide enough, stacked on narrow (phone) cards. */}
+      <div className="@container mt-6">
+        <dl className="grid grid-cols-1 gap-3 text-sm @sm:grid-cols-2">
+          <PriceBox label="Starting price" cents={snapshot.startingPriceCents} />
+          <PriceBox label="Minimum increment" cents={snapshot.minIncrementCents} />
+        </dl>
+      </div>
     </Card>
+  );
+}
+
+/**
+ * Font size for a price that must stay on one line: `maxPx`, but never wider than its box.
+ * `cqi` is 1% of the box's width (container query unit; the box needs `@container`), and a bold
+ * digit is ~0.64em wide, so "€152.50" keeps the full size while "€1,000,000,000.00" shrinks just
+ * enough to fit — on desktop and phone alike, without breaking the number across lines.
+ */
+function fittedPriceSize(text: string, maxPx: number): string {
+  return `min(${maxPx}px, ${(100 / (text.length * 0.64)).toFixed(2)}cqi)`;
+}
+
+function PriceBox({ label, cents }: { label: string; cents: number }) {
+  const price = formatCents(cents);
+  return (
+    <div className="glass-control @container min-w-0 rounded-2xl px-4 py-3">
+      <dt className="text-muted">{label}</dt>
+      <dd className="mt-0.5 font-semibold whitespace-nowrap tabular-nums" style={{ fontSize: fittedPriceSize(price, 14) }}>
+        {price}
+      </dd>
+    </div>
   );
 }
 
@@ -35,11 +54,15 @@ export function ItemDetails({ snapshot }: { snapshot: AuctionSnapshot }) {
 export function CurrentBid({ snapshot, myId }: { snapshot: AuctionSnapshot; myId?: string }) {
   const bid = snapshot.highestBid;
   const ended = snapshot.status === "ended";
+  const price = formatCents(bid?.amountCents ?? snapshot.startingPriceCents);
   return (
-    <div>
+    <div className="@container min-w-0">
       <Eyebrow>{ended ? (bid ? "Winning bid" : "Result") : bid ? "Current bid" : "Opening bid"}</Eyebrow>
-      <p className="mt-0.5 text-[52px] font-bold leading-none tracking-tight tabular-nums">
-        {formatCents(bid?.amountCents ?? snapshot.startingPriceCents)}
+      <p
+        className="mt-0.5 font-bold leading-none tracking-tight whitespace-nowrap tabular-nums"
+        style={{ fontSize: fittedPriceSize(price, 52) }}
+      >
+        {price}
       </p>
       <p className="mt-2 text-sm text-muted wrap-anywhere">
         {bid ? (

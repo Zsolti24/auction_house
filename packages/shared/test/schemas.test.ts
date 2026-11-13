@@ -35,6 +35,12 @@ describe("createAuctionInputSchema", () => {
     });
   });
 
+  it("rejects an amount above the maximum with a specific message (server-side check)", () => {
+    expect(auctionErrors({ ...validAuction, startingPriceCents: 100_000_000_001 })).toEqual({
+      startingPriceCents: ["Starting price is too large — the maximum is €1,000,000,000.00"],
+    });
+  });
+
   it("rejects fractional cents", () => {
     expect(auctionErrors({ ...validAuction, startingPriceCents: 100.5 })).toHaveProperty("startingPriceCents");
   });

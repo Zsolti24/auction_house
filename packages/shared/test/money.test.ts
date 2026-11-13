@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { centsToInputValue, formatCents, parseEuroToCents } from "../src/money";
+import { MAX_AMOUNT_CENTS } from "../src/constants";
+import { centsToInputValue, formatCents, parseEuro, parseEuroToCents, tooLargeAmountMessage } from "../src/money";
 
 describe("parseEuroToCents", () => {
   it.each([
@@ -33,6 +34,25 @@ describe("parseEuroToCents", () => {
     "99999999999", // above MAX_AMOUNT_CENTS
   ])("rejects %j", (input) => {
     expect(parseEuroToCents(input)).toBeNull();
+  });
+});
+
+describe("parseEuro", () => {
+  it("says why an amount is rejected: not a number vs. too large", () => {
+    expect(parseEuro("152.50")).toEqual({ ok: true, cents: 15_250 });
+    expect(parseEuro("abc")).toEqual({ ok: false, reason: "invalid" });
+    expect(parseEuro("1.234")).toEqual({ ok: false, reason: "invalid" });
+    expect(parseEuro("99999999999")).toEqual({ ok: false, reason: "too_large" });
+    expect(parseEuro("123456789012345678901234567890")).toEqual({ ok: false, reason: "too_large" }); // past float precision
+  });
+
+  it("accepts exactly the maximum and rejects one cent more", () => {
+    expect(parseEuro("1000000000")).toEqual({ ok: true, cents: MAX_AMOUNT_CENTS });
+    expect(parseEuro("1000000000.01")).toEqual({ ok: false, reason: "too_large" });
+  });
+
+  it("has a specific message for too large amounts", () => {
+    expect(tooLargeAmountMessage()).toBe("That amount is too large. The maximum is €1,000,000,000.00.");
   });
 });
 

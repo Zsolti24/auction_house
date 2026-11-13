@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { centsToInputValue, formatCents, parseEuroToCents, type AuctionSnapshot, type BidRejectionReason } from "@auction/shared";
+import {
+  centsToInputValue,
+  formatCents,
+  parseEuro,
+  tooLargeAmountMessage,
+  type AuctionSnapshot,
+  type BidRejectionReason,
+} from "@auction/shared";
 import { ApiRequestError, placeBid } from "../api";
 import { BidList, Countdown, CurrentBid, ItemDetails, ResultBanner } from "../components/AuctionParts";
 import { Layout } from "../components/Layout";
@@ -187,11 +194,13 @@ function BidForm({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const amountCents = parseEuroToCents(amount);
-    if (amountCents === null || amountCents === 0) {
-      show({ tone: "error", text: "Enter an amount like 152.50." });
+    const parsed = parseEuro(amount);
+    if (!parsed.ok || parsed.cents === 0) {
+      const tooLarge = !parsed.ok && parsed.reason === "too_large";
+      show({ tone: "error", text: tooLarge ? tooLargeAmountMessage() : "Enter an amount like 152.50." });
       return;
     }
+    const amountCents = parsed.cents;
 
     setSubmitting(true);
     setFeedback(null);

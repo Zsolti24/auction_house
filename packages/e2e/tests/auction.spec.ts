@@ -167,6 +167,19 @@ test("anti-sniping: a bid in the last 30 seconds extends the end, and everyone s
   await expect(bob.getByRole("button", { name: "Place bid" })).toBeVisible();
 });
 
+test("a bid above the maximum amount says exactly that, instead of a generic format error", async ({ browser, request }) => {
+  const { id } = await createAuctionViaApi(request, { endsInMs: 10 * 60_000 });
+  const anna = await joinAs(browser, "Anna", id);
+
+  await placeBid(anna, "99999999999");
+  await expect(inlineNotice(anna, "That amount is too large. The maximum is €1,000,000,000.00.")).toBeVisible();
+  await expect(anna.locator(".Toastify").getByText("That amount is too large.")).toBeVisible();
+
+  await placeBid(anna, "abc"); // a real format error still gets the format hint
+  await expect(inlineNotice(anna, "Enter an amount like 152.50.")).toBeVisible();
+  expect((await getSnapshot(request, id)).bidCount).toBe(0);
+});
+
 test("a reload keeps the bidder's name and shows the current state", async ({ browser, request }) => {
   const { id } = await createAuctionViaApi(request, { endsInMs: 10 * 60_000 });
   const anna = await joinAs(browser, "Anna", id);

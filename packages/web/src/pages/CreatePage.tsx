@@ -1,5 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { createAuctionInputSchema, parseEuroToCents, toFieldErrors } from "@auction/shared";
+import {
+  createAuctionInputSchema,
+  parseEuro,
+  toFieldErrors,
+  tooLargeAmountMessage,
+  type EuroParseResult,
+} from "@auction/shared";
 import { ApiRequestError, createAuction } from "../api";
 import { Layout } from "../components/Layout";
 import { Button, Card, Eyebrow, Field, MoneyInput, Notice, TextArea, TextInput } from "../components/ui";
@@ -38,8 +44,10 @@ export function CreatePage() {
     e.preventDefault();
     setFormError(null);
 
-    const startingPriceCents = parseEuroToCents(startingPrice);
-    const minIncrementCents = parseEuroToCents(minIncrement);
+    const startingPriceParsed = parseEuro(startingPrice);
+    const minIncrementParsed = parseEuro(minIncrement);
+    const startingPriceCents = startingPriceParsed.ok ? startingPriceParsed.cents : null;
+    const minIncrementCents = minIncrementParsed.ok ? minIncrementParsed.cents : null;
     const endsAt = new Date(endsAtLocal).getTime(); // datetime-local is parsed as local time
     const input = {
       title,
@@ -53,8 +61,11 @@ export function CreatePage() {
     // Same schema as the server, for instant feedback. The server re-validates with its own clock.
     const parsed = createAuctionInputSchema(Date.now()).safeParse(input);
     const found: Errors = parsed.success ? {} : toFieldErrors(parsed.error);
-    if (startingPrice.trim() && startingPriceCents === null) found.startingPriceCents = ["Enter an amount like 150 or 150.50"];
-    if (minIncrement.trim() && minIncrementCents === null) found.minIncrementCents = ["Enter an amount like 5 or 2.50"];
+    // Say exactly what's wrong with a typed amount: not a number, or a number above the limit.
+    const amountError = (result: EuroParseResult, example: string) =>
+      !result.ok && result.reason === "too_large" ? [tooLargeAmountMessage()] : [`Enter an amount like ${example}`];
+    if (startingPrice.trim() && !startingPriceParsed.ok) found.startingPriceCents = amountError(startingPriceParsed, "150 or 150.50");
+    if (minIncrement.trim() && !minIncrementParsed.ok) found.minIncrementCents = amountError(minIncrementParsed, "5 or 2.50");
     setErrors(found);
     const problems = Object.keys(found).length;
     if (!parsed.success || problems > 0) {
