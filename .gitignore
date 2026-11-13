@@ -16,3 +16,7 @@ data/
 
 # Playwright MCP screenshots / snapshots from manual browser checks
 .playwright-mcp/
+
+# Browser test output (traces of failed runs)
+test-results/
+playwright-report/

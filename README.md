@@ -15,9 +15,13 @@ Requirements: Node.js ≥ 20 and pnpm (the exact version is pinned in `package.j
 ```bash
 pnpm install     # install all packages
 pnpm dev         # start server (http://localhost:3001) and web app (http://localhost:5173)
-pnpm test        # run all tests
+pnpm test        # run all tests, including the browser tests
 pnpm typecheck   # type-check all packages
 ```
+
+The first `pnpm test` downloads Playwright's Chromium (one time, needs internet). The browser
+tests start their own server and web app on ports 3101 / 5174 with a temporary database, so
+they don't touch your data and can run while `pnpm dev` is running.
 
 Open http://localhost:5173, enter a display name and choose **Create an auction**. In a second
 browser (or a private window, so it gets its own identity) enter another name and choose
@@ -33,6 +37,7 @@ packages/
   shared/   domain types, zod validation schemas, money helpers — used by server AND web
   server/   Fastify API, bidding rules, SQLite persistence, SSE fan-out, end timers
   web/      React app (pages below)
+  e2e/      browser tests (Playwright) against the real running app
 ```
 
 | Page | What it does |
@@ -147,8 +152,9 @@ for 25 s replaces the connection, because a proxy can keep a dead stream looking
 ## Tests
 
 ```bash
-pnpm test                               # everything (134 tests)
+pnpm test                               # everything (134 unit/integration + 5 browser tests)
 pnpm --filter @auction/server test      # one package
+pnpm --filter @auction/e2e test         # only the browser tests (~1 minute: auctions end in real time)
 ```
 
 | Where | What |
@@ -157,6 +163,7 @@ pnpm --filter @auction/server test      # one package
 | [server/test/domain.test.ts](packages/server/test/domain.test.ts) | Pure rules: end-time boundary, minimum next bid, TOO_LOW vs OUTBID vs AUCTION_ENDED, anti-sniping at 30.001 s / 30 s / 1 ms |
 | [server/test/auctionService.test.ts](packages/server/test/auctionService.test.ts) | Service + real SQLite with a fake clock: main flow, same-moment bids, anti-sniping chains, seller key, persistence across a restart |
 | [server/test/http.test.ts](packages/server/test/http.test.ts) | Real HTTP on a random port: everything below, plus SSE pushes, error codes, heartbeat, the auction list (live vs. ended split, order, leader / winner, pushes on create / bid, an auction moving to "ended" by itself) |
+| [e2e/tests](packages/e2e/tests/auction.spec.ts) | **Browser tests** (Playwright, Chromium, one browser context per person): the four required scenarios through the real UI, plus a reload — see below |
 | [web/test](packages/web/test) | View logic: which snapshot is newer, leading / outbid / won / lost, when to fire the "you've been outbid" toast, countdown formatting |
 
 The four required scenarios, over real HTTP:
@@ -169,6 +176,21 @@ The four required scenarios, over real HTTP:
 - **Bid after the end:** → 409 `AUCTION_ENDED`, nothing stored.
 - **Anti-sniping:** a bid 10 s before the end moves it to bid + 30 s, and two separate watchers
   both receive the new end time.
+
+The same four scenarios again **in a real browser** ([auction.spec.ts](packages/e2e/tests/auction.spec.ts)):
+
+- **Main flow:** the seller creates the auction through the form, Anna and Bob join via the
+  bidder link in separate browser contexts and place four bids (pre-filled minimum, live
+  updates, the outbid notice), the auction ends on its own, and Bob sees "You won", Anna
+  "You lost", everyone "Sold to Bob for €120.00".
+- **Bids at the same moment:** both bid requests are held at a barrier until both were sent,
+  then released together, so both carry the same view — exactly one is accepted, the other sees
+  "Someone else bid in the meantime".
+- **Bid after the end:** a bidder whose page fell behind (live updates frozen while it was
+  still running) bids after the server-side end → the server rejects it, the toast says why,
+  and the page switches to the result.
+- **Anti-sniping:** a bid in the last 30 s moves the end to bid + 30 s; the other bidder and the
+  seller see the new "Ends at …" and the "Extended by a late bid" hint without reloading.
 
 Other risky behaviour that is tested: a server restart in the middle of an auction (same state
 and winner, and the "ended" push still arrives), a bid exactly at `endsAt`, a rejected late bid
@@ -189,10 +211,11 @@ including killing the server for 30 s in the middle of an auction.
   SQLite file. To run several instances I would move to Postgres (row lock or a conditional
   `UPDATE … WHERE leading_bid_id = $expected`) and fan out SSE through Redis or Postgres
   `LISTEN/NOTIFY`.
-- **No automated browser tests.** The frontend's view logic is unit-tested and I checked the UI
-  by hand with Playwright, but there is no end-to-end test in the suite. The reconnect watchdog
-  in particular is only verified manually. A Playwright test with two browser contexts would be
-  my next addition.
+- **Browser tests cover the main scenarios, not everything.** The four required scenarios and a
+  reload run in a real browser. Not covered there (checked by hand instead): the reconnect /
+  heartbeat watchdog after a server restart, the outbid sound and flash, ending early, the
+  auction list, and mobile layout. They run in Chromium only, and take about a minute because
+  auctions end in real time.
 - **Trust model is "whoever has the link".** No accounts, display names are not unique, no rate
   limiting, and the seller key lives in a URL (browser history). Fine for this scope, not for
   real money.
@@ -211,9 +234,6 @@ including killing the server for 30 s in the middle of an auction.
   the AI-validation log). A real project would record migration names/checksums and fail loudly.
 - **Optional extras:** all three are done — ending early (before the first bid), the list of
   live auctions (with ended auctions below), and the outbid sound + visual cue.
-- **The outbid cue is checked by hand, not by a test.** I verified it in the browser by counting
-  the generated tones and animations (and with sound muted), but there is no automated
-  browser test for it; only the "was I just outbid?" decision is unit-tested.
 
 ## AI usage
 
@@ -224,6 +244,8 @@ including killing the server for 30 s in the middle of an auction.
   and running the checks (typecheck, tests, smoke tests with `curl`).
 - **Playwright MCP (driven by Claude Code):** manual browser testing with isolated contexts for
   two bidders plus the seller, screenshots for visual review, and the server-restart test.
+- **Playwright Test:** the automated browser tests in `packages/e2e`, written by the agent and
+  reviewed by me (see the validation log for the first version's mistakes).
 
 **Agent setup**
 

@@ -142,6 +142,9 @@ server state; reconnect = fresh state.
       transaction as bids (`ends_at` moved to now), `POST /api/auctions/:id/end`, confirm step on
       the seller page, "Ended early by the seller" on bidder page / result / list, toasts (+ tests,
       incl. a bid racing an end-early)
+- [x] Automated browser tests (requested): `packages/e2e`, Playwright + Chromium, own server and
+      web app on ports 3101/5174 with a temporary DB; the four required scenarios through the UI
+      plus a reload; part of `pnpm test`. Stable over repeated runs.
 
 ## AI-validation log
 
@@ -202,3 +205,9 @@ output was wrong or weak, how it was caught and what changed.
   but I was suspicious and counted: in 30 out of 30 runs the bid won, because it was always sent
   first. So the "ending wins" half was never actually checked. Changed the test to alternate
   which request goes first, and to fail unless both outcomes really happened.
+- **The first browser tests had the same blind spot (browser tests).** Three of the five failed
+  on the first run, and none of it was the app's fault. The "same moment" test clicked two
+  browsers one after the other, and the second one had already received the first bid live and
+  bid the next amount — two valid bids in a row, not a race. Fixed by holding both requests until
+  both were sent and then releasing them together. The other two checked text that also appears
+  in the toast, so they found it twice; fixed by looking only at the page itself.

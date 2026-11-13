@@ -1,0 +1,15 @@
+{
+  "name": "@auction/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright install chromium && playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@auction/shared": "workspace:*",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6"
+  }
+}
