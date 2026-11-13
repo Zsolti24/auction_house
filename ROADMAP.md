@@ -99,15 +99,18 @@ server state; reconnect = fresh state.
 - [x] Smoke test through the Vite proxy: SSE is not buffered
 
 ### Phase 4 — Web (~60 min)
-- [ ] Create page with client-side validation + server error display
-- [ ] "Links" page: bidder link + seller link, copy buttons
-- [ ] Bidder page: name gate (persisted), item, current bid + leader, min next bid, countdown, recent history, bid form pre-filled with min next bid, feedback for accept / TOO_LOW / OUTBID / ENDED, "you've been outbid" banner
-- [ ] Seller page: live list of all bids (who / how much / when), countdown
-- [ ] Result view: "Sold to X for €Y" / "Ended without bids", "You won" / "You lost"
-- [ ] `useAuctionStream` hook: SSE + server-time offset
+- [x] Create page with client-side validation (shared zod schema) + server field errors; duration presets
+- [x] Links live on the seller page (bidder link + private seller link, copy buttons); creation redirects there
+- [x] Bidder page: name gate (persisted), item, current bid + leader, min next bid, countdown, recent history, bid form pre-filled with min next bid, feedback for accept / TOO_LOW / OUTBID / ENDED, "you've been outbid" notice
+- [x] Seller page: live list of all bids (who / how much / when), countdown
+- [x] Result view: "Sold to X for €Y" / "Ended without bids", "You won" / "You lost" (by bidder id, survives reload)
+- [x] `useAuctionStream` hook: SSE + server-time offset, retry on 5xx, heartbeat watchdog for half-open connections
+- [x] Countdown shows "Closing…" at zero until the server confirms the end; "Extended by a late bid" hint
+- [x] Pure view logic (`pickNewer`, `bidderStanding`, `formatRemaining`) unit-tested
+- [x] Browser check (Playwright, isolated contexts for two bidders): validation messages, create, TOO_LOW, outbid notice, anti-sniping extension seen by seller, reload keeps name/state, won/lost/sold, server killed for 30 s and restarted → page recovers by itself, mobile layout
 
 ### Phase 5 — Manual check (~15 min)
-- [ ] Two browsers + seller tab: full flow, reload mid-auction, kill server mid-auction, anti-sniping visible to all
+- [x] Two browsers + seller tab: full flow, reload mid-auction, kill server mid-auction, anti-sniping visible to all (done during phase 4, see above)
 
 ### Phase 6 — Docs (~15 min)
 - [ ] README: architecture, concurrency & time, tests, limitations, AI usage (models/tools, agent setup, one case where the agent was wrong)
@@ -139,3 +142,12 @@ output was wrong or weak, how it was caught and what changed.
 - **A pointless check slipped in (phase 3).** While fixing that test, the agent added a "sanity
   check" that compared a value with itself, so it could never fail. I caught it when reviewing
   the change and replaced it with a real check.
+- **The page didn't survive a server restart (phase 4).** All automated tests passed, but when I
+  actually restarted the server in the browser test, the page broke in two ways. First, it showed
+  "Could not connect" and gave up for good, because the dev proxy answers with an error while the
+  server is down and the browser's live connection treats that as final. Second, a page that was
+  already open kept showing "Live" while receiving nothing, because the proxy kept a dead
+  connection open. The agent's design assumed the browser would always reconnect by itself. Fixed
+  with retries on server errors and a heartbeat: the server pings every 10 seconds, and the page
+  reconnects if it hears nothing for 25 seconds. Re-tested by killing the server for 30 seconds:
+  the page switched to "Reconnecting…" and came back with the latest bids on its own.

@@ -239,6 +239,17 @@ describe("timers and restarts (real timers)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it("streams send a named ping heartbeat so clients can detect a dead connection", async () => {
+    const server = await startServer({ clock, sseHeartbeatMs: 50 });
+    servers.push(server);
+    const { body } = await server.post<CreateAuctionResponse>("/api/auctions", auctionInput({ endsAt: clock.now() + 60_000 }));
+    const stream = await server.stream<AuctionSnapshot>(`/api/auctions/${body.id}/events`);
+    expect((await stream.next()).id).toBe(body.id);
+    expect(await stream.nextEventOfType("ping", 1_000)).toBe("{}");
+    expect(await stream.nextEventOfType("ping", 1_000)).toBe("{}");
+    stream.close();
+  });
+
   it("watchers are told the auction ended, without asking, at the end time", async () => {
     const server = await start();
     const { body } = await server.post<CreateAuctionResponse>("/api/auctions", auctionInput({ endsAt: clock.now() + 300 }));

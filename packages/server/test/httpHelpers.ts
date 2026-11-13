@@ -3,8 +3,8 @@ import { buildApp } from "../src/app";
 import type { Clock } from "../src/clock";
 
 /** Starts the real app on a random port and talks to it over real HTTP (not app.inject). */
-export async function startServer(options: { dbPath?: string; clock?: Clock } = {}) {
-  const app = buildApp({ dbPath: options.dbPath ?? ":memory:", clock: options.clock });
+export async function startServer(options: { dbPath?: string; clock?: Clock; sseHeartbeatMs?: number } = {}) {
+  const app = buildApp({ dbPath: options.dbPath ?? ":memory:", clock: options.clock, sseHeartbeatMs: options.sseHeartbeatMs });
   await app.listen({ port: 0, host: "127.0.0.1" });
   const { port } = app.server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -31,7 +31,8 @@ export async function startServer(options: { dbPath?: string; clock?: Clock } = 
 
 /**
  * Minimal SSE client on top of fetch streaming (Node has no built-in EventSource without a flag).
- * `next()` resolves with the next `data:` message, parsed as JSON.
+ * `next()` resolves with the next default (`message`) event's data, parsed as JSON — exactly
+ * what the browser's `onmessage` would see. `nextEventOfType()` waits for a named event.
  */
 export async function openStream<T>(url: string) {
   const controller = new AbortController();
@@ -40,19 +41,24 @@ export async function openStream<T>(url: string) {
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
 
-  async function next(timeoutMs = 3_000): Promise<T> {
+  function parseBlock(block: string) {
+    const lines = block.split("\n");
+    const type = lines.find((l) => l.startsWith("event: "))?.slice(7) ?? "message";
+    const data = lines
+      .filter((l) => l.startsWith("data: "))
+      .map((l) => l.slice(6))
+      .join("\n");
+    return { type, data };
+  }
+
+  async function nextEventOfType(type: string, timeoutMs = 3_000): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const end = buffer.indexOf("\n\n");
       if (end !== -1) {
-        const block = buffer.slice(0, end);
+        const event = parseBlock(buffer.slice(0, end));
         buffer = buffer.slice(end + 2);
-        const data = block
-          .split("\n")
-          .filter((line) => line.startsWith("data: "))
-          .map((line) => line.slice(6))
-          .join("\n");
-        if (data) return JSON.parse(data) as T; // skip `retry:` and `: ping` blocks
+        if (event.data && event.type === type) return event.data; // skips `retry:` and other events
         continue;
       }
       const remaining = deadline - Date.now();
@@ -69,7 +75,8 @@ export async function openStream<T>(url: string) {
   return {
     status: res.status,
     contentType: res.headers.get("content-type"),
-    next,
+    next: async (timeoutMs?: number) => JSON.parse(await nextEventOfType("message", timeoutMs)) as T,
+    nextEventOfType,
     close: () => controller.abort(),
   };
 }

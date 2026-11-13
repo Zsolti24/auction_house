@@ -13,3 +13,6 @@ data/
 
 .env
 .env.local
+
+# Playwright MCP screenshots / snapshots from manual browser checks
+.playwright-mcp/

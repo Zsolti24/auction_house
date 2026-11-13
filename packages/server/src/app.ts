@@ -11,14 +11,14 @@ export interface AppOptions {
   /** SQLite file path, or ":memory:". */
   dbPath: string;
   clock?: Clock;
+  /** How often SSE streams send a `ping` event so clients can detect dead connections. */
+  sseHeartbeatMs?: number;
 }
 
 type IdParams = { Params: { id: string } };
 type SellerParams = IdParams & { Querystring: { key?: string } };
 
-const SSE_HEARTBEAT_MS = 15_000;
-
-export function buildApp({ dbPath, clock = systemClock }: AppOptions) {
+export function buildApp({ dbPath, clock = systemClock, sseHeartbeatMs = 10_000 }: AppOptions) {
   // Destroy open connections on close: SSE streams never end by themselves and would
   // otherwise keep `app.close()` waiting forever.
   const app = Fastify({ logger: false, forceCloseConnections: true });
@@ -93,14 +93,16 @@ export function buildApp({ dbPath, clock = systemClock }: AppOptions) {
   app.get<IdParams>("/api/auctions/:id/events", (request, reply) => {
     const { id } = request.params;
     const initial = service.getSnapshot(id); // throws 404 before the stream is opened
-    openEventStream(request, reply, initial, (send) => hub.subscribe(id, { view: "public", send }));
+    openEventStream(request, reply, initial, sseHeartbeatMs, (send) => hub.subscribe(id, { view: "public", send }));
   });
 
   app.get<SellerParams>("/api/auctions/:id/seller/events", (request, reply) => {
     const { id } = request.params;
     const sellerKey = request.query.key ?? "";
     const initial = service.getSellerSnapshot(id, sellerKey); // 404 / 403 before the stream opens
-    openEventStream(request, reply, initial, (send) => hub.subscribe(id, { view: "seller", sellerKey, send }));
+    openEventStream(request, reply, initial, sseHeartbeatMs, (send) =>
+      hub.subscribe(id, { view: "seller", sellerKey, send }),
+    );
   });
 
   return app;
@@ -111,11 +113,16 @@ export function buildApp({ dbPath, clock = systemClock }: AppOptions) {
  * change. Reading the initial snapshot and subscribing happen in the same synchronous tick, so no
  * change can slip in between. The browser's EventSource reconnects by itself (after `retry` ms)
  * and the reconnect again starts with a full snapshot.
+ *
+ * Heartbeat: a named `ping` event (visible to client JS, unlike an SSE comment). A proxy can keep
+ * the browser's side of a stream open after the server died; the client treats a long silence
+ * as a dead connection and reconnects.
  */
 function openEventStream<T>(
   request: FastifyRequest,
   reply: FastifyReply,
   initial: T,
+  heartbeatMs: number,
   subscribe: (send: (data: T) => void) => () => void,
 ): void {
   reply.hijack();
@@ -132,7 +139,7 @@ function openEventStream<T>(
   send(initial);
 
   const unsubscribe = subscribe(send);
-  const heartbeat = setInterval(() => res.write(": ping\n\n"), SSE_HEARTBEAT_MS);
+  const heartbeat = setInterval(() => res.write("event: ping\ndata: {}\n\n"), heartbeatMs);
   request.raw.on("close", () => {
     clearInterval(heartbeat);
     unsubscribe();

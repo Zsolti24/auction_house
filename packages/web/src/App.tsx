@@ -1,22 +1,31 @@
-import { useEffect, useState } from "react";
-import { ANTI_SNIPING_WINDOW_MS } from "@auction/shared";
+import { BidderPage } from "./pages/BidderPage";
+import { CreatePage } from "./pages/CreatePage";
+import { SellerPage } from "./pages/SellerPage";
+import { Unavailable } from "./pages/states";
+import { useLocation } from "./router";
 
 export function App() {
-  const [health, setHealth] = useState<string>("checking…");
+  const location = useLocation();
+  const url = new URL(location, window.location.origin);
+  const path = url.pathname.replace(/\/+$/, "") || "/";
 
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => (r.ok ? "server ok" : `server error ${r.status}`))
-      .catch(() => "server unreachable")
-      .then(setHealth);
-  }, []);
+  const seller = /^\/a\/([^/]+)\/seller$/.exec(path);
+  if (seller) {
+    return (
+      // key: remount (and reconnect) when navigating between auctions
+      <SellerPage
+        key={seller[1]}
+        auctionId={decodeURIComponent(seller[1]!)}
+        sellerKey={url.searchParams.get("key") ?? ""}
+        justCreated={url.searchParams.has("created")}
+      />
+    );
+  }
 
-  return (
-    <main className="mx-auto max-w-2xl p-8 font-sans">
-      <h1 className="text-3xl font-bold">Live Auction House</h1>
-      <p className="mt-2 text-slate-600">
-        Scaffold — {health}. Anti-sniping window: {ANTI_SNIPING_WINDOW_MS / 1000}s.
-      </p>
-    </main>
-  );
+  const bidder = /^\/a\/([^/]+)$/.exec(path);
+  if (bidder) return <BidderPage key={bidder[1]} auctionId={decodeURIComponent(bidder[1]!)} />;
+
+  if (path === "/") return <CreatePage />;
+
+  return <Unavailable message="Page not found." />;
 }
