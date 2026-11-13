@@ -134,8 +134,11 @@ server state; reconnect = fresh state.
       ("Sold to X for €Y" / "Ended without bids"), most recent first; an auction moves from the
       top list to the bottom one by itself when it ends. Endpoint renamed `/api/live-auctions` →
       `/api/lobby` since it is no longer only live auctions (+ tests)
+- [x] Outbid cue (sound + visual) — the only place the task asks for a sound: two-tone Web Audio
+      chime, orange flash + shake of the live panel (no shake with reduced motion), "⚠ Outbid!"
+      tab title while the tab is in the background, mute toggle remembered in localStorage.
+      Verified in the browser by counting tones/animations, muted and unmuted.
 - [ ] Seller can end early, only before the first bid (+ test)
-- [ ] Outbid cue (sound + flash); the outbid toast already covers part of it
 
 ## AI-validation log
 

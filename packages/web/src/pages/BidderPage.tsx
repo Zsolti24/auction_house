@@ -8,6 +8,7 @@ import { Button, Card, Field, MoneyInput, Notice } from "../components/ui";
 import { useAuctionStream } from "../hooks/useAuctionStream";
 import { useServerNow } from "../hooks/useServerNow";
 import { hasParticipated, markParticipated, useBidderIdentity } from "../identity";
+import { flagTabTitle, flashElement, isSoundEnabled, playOutbidSound, setSoundEnabled } from "../lib/outbidCue";
 import { bidderStanding, wasOutbid } from "../lib/view";
 import { notify } from "../notify";
 import { Loading, Unavailable } from "./states";
@@ -33,7 +34,13 @@ export function BidderPage({ auctionId }: { auctionId: string }) {
   );
   const serverNow = useServerNow(clockOffset);
   const [participated, setParticipated] = useState(() => hasParticipated(auctionId));
-  useLiveEventToasts(snapshot, identity.id, participated);
+  const livePanel = useRef<HTMLDivElement>(null);
+  useLiveEventToasts(snapshot, identity.id, participated, () => {
+    // The task's "sound or visual cue when you're outbid": both, plus the toast and inline notice.
+    playOutbidSound();
+    flashElement(livePanel.current);
+    flagTabTitle();
+  });
 
   if (failure) return <Unavailable message={failure} connection={connection} />;
   if (!snapshot) return <Loading connection={connection} />;
@@ -59,7 +66,10 @@ export function BidderPage({ auctionId }: { auctionId: string }) {
         </div>
 
         {/* On small screens the live panel (price, countdown, bid form) comes first. */}
-        <div className="order-first min-w-0 space-y-6 lg:order-none lg:sticky lg:top-24 lg:self-start">
+        <div
+          ref={livePanel}
+          className="order-first min-w-0 space-y-6 rounded-[28px] lg:order-none lg:sticky lg:top-24 lg:self-start"
+        >
           <Card className="space-y-5">
             <CurrentBid snapshot={snapshot} myId={identity.id} />
             <Countdown snapshot={snapshot} serverNow={serverNow} />
@@ -106,8 +116,16 @@ export function BidderPage({ auctionId }: { auctionId: string }) {
  * ending. Compared against the previous snapshot, so a page load into an already-ended auction
  * (or a reload while outbid) shows the inline state but no toast.
  */
-function useLiveEventToasts(snapshot: AuctionSnapshot | null, myId: string, participated: boolean) {
+function useLiveEventToasts(
+  snapshot: AuctionSnapshot | null,
+  myId: string,
+  participated: boolean,
+  onOutbid: () => void,
+) {
   const previous = useRef<AuctionSnapshot | null>(null);
+  const onOutbidRef = useRef(onOutbid);
+  onOutbidRef.current = onOutbid;
+
   useEffect(() => {
     const prev = previous.current;
     previous.current = snapshot;
@@ -118,6 +136,7 @@ function useLiveEventToasts(snapshot: AuctionSnapshot | null, myId: string, part
         `${snapshot.highestBid.bidderName} outbid you with ${formatCents(snapshot.highestBid.amountCents)}.`,
         `outbid-${snapshot.highestBid.id}`,
       );
+      onOutbidRef.current();
     }
 
     if (prev.status === "live" && snapshot.status === "ended") {
@@ -219,12 +238,34 @@ function BidForm({
         {submitting ? "Placing bid…" : "Place bid"}
       </Button>
       {visibleFeedback && <Notice tone={visibleFeedback.tone}>{visibleFeedback.text}</Notice>}
-      <p className="text-sm text-muted wrap-anywhere">
-        Bidding as <span className="font-semibold text-ink">{bidderName}</span> ·{" "}
-        <button type="button" onClick={onChangeName} className="text-accent hover:underline">
-          change name
-        </button>
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-sm text-muted wrap-anywhere">
+          Bidding as <span className="font-semibold text-ink">{bidderName}</span> ·{" "}
+          <button type="button" onClick={onChangeName} className="text-accent hover:underline">
+            change name
+          </button>
+        </p>
+        <SoundToggle />
+      </div>
     </form>
+  );
+}
+
+/** On/off for the outbid chime; remembered in localStorage. */
+function SoundToggle() {
+  const [enabled, setEnabled] = useState(isSoundEnabled);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setSoundEnabled(!enabled);
+        setEnabled(!enabled);
+      }}
+      aria-pressed={enabled}
+      title={enabled ? "Play a sound when you're outbid" : "Outbid sound is muted"}
+      className="glass-control rounded-full px-3 py-1 text-xs font-semibold text-ink/80 transition hover:bg-white/85"
+    >
+      {enabled ? "🔔 Sound on" : "🔕 Sound off"}
+    </button>
   );
 }

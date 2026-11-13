@@ -81,6 +81,14 @@ Key decisions (more detail and alternatives in [ROADMAP.md](ROADMAP.md#decisions
   watching, the auction ending, connection lost / back, link copied, a new bid for the seller)
   shows a toast, *and* stays visible on the page after the toast fades. Toasts for repeatable
   events carry an id, so a burst of updates shows one toast, not a pile.
+- **Outbid cue: sound + visual, only where the task asks for it.** When someone outbids you
+  while you watch, you hear a short two-tone chime (synthesised with Web Audio, no audio file),
+  the live panel flashes orange and shakes (no shake with *reduce motion*), the tab title shows
+  "⚠ Outbid!" if you're on another tab, plus the toast and the inline notice. The task asks for a
+  sound or visual cue only for being outbid, so nothing else makes a sound. Browsers only allow
+  audio after a click; anyone who can be outbid has already clicked "Place bid". The sound can be
+  muted with a toggle under the bid form (remembered per browser). Code:
+  [outbidCue.ts](packages/web/src/lib/outbidCue.ts).
 - **User text never breaks the layout.** Titles, descriptions and names wrap anywhere, and grid
   columns may shrink below their content, so a long unbroken word or pasted URL stays inside its
   card.
@@ -191,8 +199,12 @@ including killing the server for 30 s in the middle of an auction.
 - **Migrations are numbered, not named.** A migration that was applied locally and then reverted
   in git leaves the database "ahead" of the code (this happened to me during development; see
   the AI-validation log). A real project would record migration names/checksums and fail loudly.
-- **Optional extras:** the list of live auctions is done (with ended auctions below). Ending early and the outbid sound are
-  being added as separate commits; see [ROADMAP.md](ROADMAP.md#phase-7--extras-separate-commits-each).
+- **Optional extras:** the list of live auctions (with ended auctions below) and the outbid
+  sound + visual cue are done. Ending early is not done yet; see
+  [ROADMAP.md](ROADMAP.md#phase-7--extras-separate-commits-each).
+- **The outbid cue is checked by hand, not by a test.** I verified it in the browser by counting
+  the generated tones and animations (and with sound muted), but there is no automated
+  browser test for it; only the "was I just outbid?" decision is unit-tested.
 
 ## AI usage
 
