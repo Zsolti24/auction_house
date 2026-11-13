@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+
+# Packages allowed to run install scripts (pnpm blocks them by default).
+allowBuilds:
+  esbuild: true
+  better-sqlite3: true
