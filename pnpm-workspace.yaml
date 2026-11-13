@@ -2,6 +2,10 @@ packages:
   - "packages/*"
 
 # Packages allowed to run install scripts (pnpm blocks them by default).
-allowBuilds:
+# better-sqlite3 needs its native binary; esbuild is used by Vite and tsx.
+allowBuilds: # pnpm >= 11
   esbuild: true
   better-sqlite3: true
+onlyBuiltDependencies: # pnpm 10
+  - esbuild
+  - better-sqlite3

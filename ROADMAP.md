@@ -32,8 +32,9 @@ optional extras afterwards. Each phase ends with green tests and a commit.
 1. Auction ended or cancelled → `AUCTION_ENDED`
 2. `minNext = noBids ? startingPrice : highest + minIncrement`
 3. `amount < minNext` →
-   - leading bid changed since the client's `expectedLeadingBidId` → `OUTBID`
-   - otherwise → `TOO_LOW`
+   - leading bid changed since the client's `expectedLeadingBidId` **and** the bid would have been
+     valid in the state the client saw → `OUTBID`
+   - otherwise (incl. unknown `expectedLeadingBidId`) → `TOO_LOW`
 4. Insert bid; apply anti-sniping extension
 5. Commit → broadcast full snapshot over SSE → reschedule the end timer
 
@@ -75,10 +76,13 @@ server state; reconnect = fresh state.
 - [x] Money helpers: `parseEuroToCents`, `formatCents`, `centsToInputValue` + unit tests (edge cases: `"0.29"`, `"1,50"`, `"abc"`, 3 decimals, thousands separators)
 
 ### Phase 2 — Server core (~45 min)
-- [ ] SQLite schema + migrations on startup
-- [ ] Repository layer
-- [ ] `AuctionService` with injected `Clock`: `create`, `getSnapshot`, `placeBid`
-- [ ] Domain tests: TOO_LOW / OUTBID / AUCTION_ENDED, anti-sniping boundaries (30.001s vs 30s), first bid at starting price
+- [x] SQLite schema + migrations on startup (`PRAGMA user_version`)
+- [x] Repository layer (prepared statements only)
+- [x] Pure rules in `domain.ts` (`deriveStatus`, `minNextBid`, `evaluateBid`, `extendForAntiSniping`)
+- [x] `AuctionService` with injected `Clock`: `createAuction`, `getSnapshot`, `getSellerSnapshot`, `placeBid` (one `BEGIN IMMEDIATE` transaction), `liveAuctions`
+- [x] Seller key stored only as SHA-256 hash, compared with `timingSafeEqual`
+- [x] Domain + service tests: TOO_LOW / OUTBID / AUCTION_ENDED, anti-sniping boundaries (30.001s vs 30s, chained extensions), first bid at starting price, main flow, same-moment bids, persistence across restart (file DB)
+- [x] Mutation check: breaking the end-time rule, anti-sniping or OUTBID detection each makes tests fail
 
 ### Phase 3 — API, real-time, resilience (~45 min)
 - [ ] Fastify routes + zod validation with per-field error messages
@@ -116,4 +120,13 @@ server state; reconnect = fresh state.
 Running notes for the README's "Validation" section — record every case where the agent's
 output was wrong or weak, how it was caught and what changed.
 
--
+- **Package depending on itself (phase 0).** While installing packages, the agent accidentally
+  added the shared package as a dependency of itself. I noticed it in the `package.json` diff
+  and removed it.
+- **A test that didn't test anything (phase 2).** One of the concurrency tests looked fine by its
+  name, but the code inside was nonsense: wrong bid amount, and it expected a bid to be accepted
+  that would actually be rejected. I spotted it while reading through the tests before running
+  them, and had it rewritten as a clear three-bidder scenario.
+- **All tests passed on the first try — suspicious (phase 2).** Instead of trusting it, I broke
+  three rules on purpose (bids allowed at the exact end time, anti-sniping turned off, "outbid"
+  never reported) and checked that the tests caught it. They did, every time, so I kept them.
