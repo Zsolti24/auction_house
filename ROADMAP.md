@@ -85,16 +85,18 @@ server state; reconnect = fresh state.
 - [x] Mutation check: breaking the end-time rule, anti-sniping or OUTBID detection each makes tests fail
 
 ### Phase 3 — API, real-time, resilience (~45 min)
-- [ ] Fastify routes + zod validation with per-field error messages
-- [ ] SSE hub (per-auction subscribers, heartbeat)
-- [ ] End-timer scheduler, rebuilt on startup (beware: `setTimeout` delays > 2^31-1 ms (~24.8 days) fire immediately — clamp and re-check)
-- [ ] Integration tests (real HTTP + SQLite):
-  - [ ] main flow: create → 2 bidders, several bids → time passes → winner declared
-  - [ ] simultaneous bids: N parallel identical bids → exactly 1 accepted
-  - [ ] bid after end → rejected
-  - [ ] anti-sniping: bid at T-10s → `endsAt = bidTime + 30s`
-  - [ ] restart: close app, reopen same DB file → same state and winner
-  - [ ] validation errors (400) and wrong seller key (403)
+- [x] Fastify routes + zod validation with per-field error messages (bids: 201 accepted / 409 rejected, both with snapshot)
+- [x] SSE hub (per-auction subscribers, public + seller streams, heartbeat, `retry: 2000`)
+- [x] End-timer scheduler, rebuilt on startup (`setTimeout` delays > 2^31-1 ms (~24.8 days) fire immediately — clamped and re-checked on fire)
+- [x] `forceCloseConnections` so open SSE streams don't block shutdown
+- [x] Integration tests (real HTTP on a random port + SQLite):
+  - [x] main flow: create → 2 bidders, several bids → time passes → winner declared
+  - [x] simultaneous bids: 20 parallel identical bids → exactly 1 accepted; 50 parallel random bids → accepted bids strictly increase by the increment
+  - [x] bid after end → 409 AUCTION_ENDED
+  - [x] anti-sniping: bid at T-10s → `endsAt = bidTime + 30s`, pushed to every watcher
+  - [x] restart: close app mid-auction, reopen same DB file → same state, winner, and the "ended" push still arrives
+  - [x] validation errors (400), malformed JSON (400), unknown auction (404), wrong seller key (403)
+- [x] Smoke test through the Vite proxy: SSE is not buffered
 
 ### Phase 4 — Web (~60 min)
 - [ ] Create page with client-side validation + server error display
@@ -130,3 +132,10 @@ output was wrong or weak, how it was caught and what changed.
 - **All tests passed on the first try — suspicious (phase 2).** Instead of trusting it, I broke
   three rules on purpose (bids allowed at the exact end time, anti-sniping turned off, "outbid"
   never reported) and checked that the tests caught it. They did, every time, so I kept them.
+- **The restart test forgot about anti-sniping (phase 3).** The agent wrote a test where someone
+  bids 1.5 seconds before the end, then expected the auction to end right after. But a bid that
+  late pushes the end out by 30 seconds — exactly as it should — so the test failed. The code was
+  right, the test was wrong. Fixed the test so the bid comes early enough not to extend the end.
+- **A pointless check slipped in (phase 3).** While fixing that test, the agent added a "sanity
+  check" that compared a value with itself, so it could never fail. I caught it when reviewing
+  the change and replaced it with a real check.

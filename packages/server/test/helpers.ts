@@ -22,6 +22,20 @@ export class FakeClock implements Clock {
   }
 }
 
+/**
+ * Real time plus an adjustable offset. For tests that need real timers to fire (end
+ * notifications) but must not wait the full duration: `jump()` skips ahead instantly.
+ */
+export class ShiftedClock implements Clock {
+  private offset = 0;
+  now() {
+    return Date.now() + this.offset;
+  }
+  jump(ms: number) {
+    this.offset += ms;
+  }
+}
+
 export function makeService(dbPath = ":memory:", clock = new FakeClock()) {
   const db: Db = openDatabase(dbPath);
   return { db, clock, service: new AuctionService(db, clock) };
