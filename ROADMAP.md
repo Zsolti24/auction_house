@@ -70,9 +70,9 @@ server state; reconnect = fresh state.
 - [x] Root scripts: `pnpm dev` starts everything, `pnpm test` runs all tests, `pnpm typecheck`
 
 ### Phase 1 — Shared package (~20 min)
-- [ ] Domain types: `AuctionSnapshot`, `Bid`, `BidResult`, rejection reasons
-- [ ] zod schemas: create-auction input (price > 0, increment > 0, end time in the future), bid input
-- [ ] Money helpers: `parseEuroToCents`, `formatCents` + unit tests (edge cases: `"0.1"`, `"1,50"`, `"abc"`, 3 decimals)
+- [x] Domain types: `AuctionSnapshot`, `SellerSnapshot`, `Bid`, `PlaceBidResponse`, rejection reasons, `ApiError`
+- [x] zod schemas: create-auction input (price > 0, increment > 0, end time in the future — schema built per request with `now`), bid input, `toFieldErrors`
+- [x] Money helpers: `parseEuroToCents`, `formatCents`, `centsToInputValue` + unit tests (edge cases: `"0.29"`, `"1,50"`, `"abc"`, 3 decimals, thousands separators)
 
 ### Phase 2 — Server core (~45 min)
 - [ ] SQLite schema + migrations on startup
@@ -83,7 +83,7 @@ server state; reconnect = fresh state.
 ### Phase 3 — API, real-time, resilience (~45 min)
 - [ ] Fastify routes + zod validation with per-field error messages
 - [ ] SSE hub (per-auction subscribers, heartbeat)
-- [ ] End-timer scheduler, rebuilt on startup
+- [ ] End-timer scheduler, rebuilt on startup (beware: `setTimeout` delays > 2^31-1 ms (~24.8 days) fire immediately — clamp and re-check)
 - [ ] Integration tests (real HTTP + SQLite):
   - [ ] main flow: create → 2 bidders, several bids → time passes → winner declared
   - [ ] simultaneous bids: N parallel identical bids → exactly 1 accepted
