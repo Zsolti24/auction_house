@@ -113,7 +113,7 @@ server state; reconnect = fresh state.
 - [x] Two browsers + seller tab: full flow, reload mid-auction, kill server mid-auction, anti-sniping visible to all (done during phase 4, see above)
 
 ### Phase 6 — Docs (~15 min)
-- [ ] README: architecture, concurrency & time, tests, limitations, AI usage (models/tools, agent setup, one case where the agent was wrong)
+- [x] README: architecture, concurrency & time, tests, limitations, AI usage (models/tools, agent setup, one case where the agent was wrong)
 
 ### Phase 7 — Extras (separate commits each)
 - [ ] Seller can end early, only before the first bid (+ test)
