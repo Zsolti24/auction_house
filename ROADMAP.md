@@ -57,7 +57,8 @@ the state from `now`.
 | `GET /api/auctions/:id/events` | SSE: full snapshot on connect and after every change |
 | `GET /api/auctions/:id/seller?key=…` | Seller view with all bids |
 | `POST /api/auctions/:id/close` | *Extra*: end early (only before the first bid) |
-| `GET /api/auctions?live=1` | *Extra*: list of live auctions |
+| `GET /api/live-auctions` | *Extra*: list of live auctions (soonest end first) |
+| `GET /api/live-auctions/events` | *Extra*: SSE, full list on connect and on every create / accepted bid / end |
 
 Every SSE message is a full snapshot, not a diff, so clients can never drift from the
 server state; reconnect = fresh state.
@@ -116,8 +117,12 @@ server state; reconnect = fresh state.
 - [x] README: architecture, concurrency & time, tests, limitations, AI usage (models/tools, agent setup, one case where the agent was wrong)
 
 ### Phase 7 — Extras (separate commits each)
+- [x] Landing page (UX change requested after phase 6): big "Live Auction" title, one display
+      name, two buttons — **Bid on an auction** → live list, **Create an auction** → create page.
+      Both need a name; the name is also stored as the seller name ("Offered by …", migration 2).
+- [x] List of live auctions (`/auctions`): real-time via its own SSE stream, cards with title,
+      seller, current price, bid count, countdown; ended auctions drop off by themselves (+ tests)
 - [ ] Seller can end early, only before the first bid (+ test)
-- [ ] List of live auctions
 - [ ] Outbid cue (sound + visual)
 
 ## AI-validation log
@@ -151,3 +156,17 @@ output was wrong or weak, how it was caught and what changed.
   with retries on server errors and a heartbeat: the server pings every 10 seconds, and the page
   reconnects if it hears nothing for 25 seconds. Re-tested by killing the server for 30 seconds:
   the page switched to "Reconnecting…" and came back with the latest bids on its own.
+- **The name was forgotten after clicking "Bid" (phase 7).** On the new landing page I typed a
+  name and clicked the button, and the next page asked for my name again. The agent saved the
+  name inside a React state update that only runs on the next render — but the page had already
+  navigated away, so it never ran. On top of that, every component had its own copy of the
+  name. Fixed by keeping the name in one shared place that saves immediately. Caught only in the
+  browser; the unit tests could not see it.
+- **A reverted change left the database out of step (phase 7).** I had started a different
+  extra and then asked to undo it. The code was reverted, but in the meantime an old dev server
+  the agent thought it had stopped was still running in the background, restarted itself on the
+  file change and applied the half-finished database migration. The next migration was then
+  skipped and the server crashed on startup. Caught because the live list showed "Reconnecting…";
+  the server log said a column was missing. Fixed by stopping every leftover process (there were
+  four), moving the dev database aside, and from now on stopping dev servers by process, not by
+  port.

@@ -18,6 +18,8 @@ export interface AuctionSnapshot {
   id: string;
   title: string;
   description: string;
+  /** Empty for auctions created before seller names existed. */
+  sellerName: string;
   startingPriceCents: number;
   minIncrementCents: number;
   createdAt: number;
@@ -38,6 +40,24 @@ export interface AuctionSnapshot {
 /** Seller view: same as the public snapshot but with the complete bid history (newest first). */
 export interface SellerSnapshot extends AuctionSnapshot {
   bids: Bid[];
+}
+
+/** One row of the live-auctions list. */
+export interface AuctionSummary {
+  id: string;
+  title: string;
+  sellerName: string;
+  /** Highest bid, or the starting price if there are no bids yet. */
+  currentPriceCents: number;
+  bidCount: number;
+  endsAt: number;
+}
+
+/** The live-auctions list; sent on GET and as every message of its SSE stream (full list). */
+export interface LiveAuctionsSnapshot {
+  /** Auctions that are still running, the ones ending soonest first. */
+  auctions: AuctionSummary[];
+  serverTime: number;
 }
 
 export interface CreateAuctionResponse {

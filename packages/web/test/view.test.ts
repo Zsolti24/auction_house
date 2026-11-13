@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuctionSnapshot, Bid } from "@auction/shared";
-import { bidderStanding, formatRemaining, pickNewer } from "../src/lib/view";
+import { bidderStanding, formatRemaining, pickNewer, pickNewerList } from "../src/lib/view";
 
 const ME = "me-id";
 const OTHER = "other-id";
@@ -18,6 +18,7 @@ function snapshot(overrides: Partial<AuctionSnapshot> = {}): AuctionSnapshot {
     id: "a1",
     title: "Item",
     description: "Desc",
+    sellerName: "Sam",
     startingPriceCents: 1000,
     minIncrementCents: 100,
     createdAt: 0,
@@ -50,6 +51,16 @@ describe("pickNewer", () => {
     const more = snapshot({ serverTime: 2000, bidCount: 2 });
     expect(pickNewer(more, fewer)).toBe(more);
     expect(pickNewer(fewer, more)).toBe(more);
+  });
+});
+
+describe("pickNewerList", () => {
+  it("keeps the live list with the latest server time", () => {
+    const older = { auctions: [], serverTime: 1000 };
+    const newer = { auctions: [], serverTime: 2000 };
+    expect(pickNewerList(null, older)).toBe(older);
+    expect(pickNewerList(older, newer)).toBe(newer);
+    expect(pickNewerList(newer, older)).toBe(newer);
   });
 });
 

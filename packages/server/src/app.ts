@@ -70,7 +70,16 @@ export function buildApp({ dbPath, clock = systemClock, sseHeartbeatMs = 10_000 
   app.post("/api/auctions", async (request, reply) => {
     const created = service.createAuction(request.body);
     timers.schedule(created.id, service.getSnapshot(created.id).endsAt);
+    hub.publishLobby(); // the new auction appears on everyone's live list
     return reply.status(201).send(created);
+  });
+
+  /** Running auctions, ending soonest first. */
+  app.get("/api/live-auctions", async () => service.getLiveAuctions());
+
+  /** Live list as SSE: full list on connect and whenever an auction is created, bid on or ends. */
+  app.get("/api/live-auctions/events", (request, reply) => {
+    openEventStream(request, reply, service.getLiveAuctions(), sseHeartbeatMs, (send) => hub.subscribeLobby(send));
   });
 
   app.get<IdParams>("/api/auctions/:id", async (request) => service.getSnapshot(request.params.id));
@@ -85,7 +94,7 @@ export function buildApp({ dbPath, clock = systemClock, sseHeartbeatMs = 10_000 
     const result = service.placeBid(id, request.body);
     if (!result.accepted) return reply.status(409).send(result);
 
-    hub.publish(id);
+    hub.publish(id); // auction watchers + live list (new price)
     timers.schedule(id, result.snapshot.endsAt); // end time may have moved (anti-sniping)
     return reply.status(201).send(result);
   });

@@ -1,4 +1,4 @@
-import type { AuctionSnapshot } from "@auction/shared";
+import type { AuctionSnapshot, LiveAuctionsSnapshot } from "@auction/shared";
 
 /**
  * Pure view logic, kept out of components so it can be unit-tested.
@@ -13,6 +13,11 @@ export function pickNewer<T extends AuctionSnapshot>(current: T | null, incoming
   if (!current) return incoming;
   if (incoming.serverTime !== current.serverTime) return incoming.serverTime > current.serverTime ? incoming : current;
   return incoming.bidCount >= current.bidCount ? incoming : current;
+}
+
+/** The live list only comes from its stream, so the newest server time always wins. */
+export function pickNewerList(current: LiveAuctionsSnapshot | null, incoming: LiveAuctionsSnapshot): LiveAuctionsSnapshot {
+  return !current || incoming.serverTime >= current.serverTime ? incoming : current;
 }
 
 export type BidderStanding = "leading" | "outbid" | "won" | "lost" | "watching";

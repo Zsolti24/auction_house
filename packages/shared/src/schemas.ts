@@ -8,6 +8,14 @@ const amountCents = (label: string) =>
     .positive(`${label} must be greater than €0`)
     .max(MAX_AMOUNT_CENTS, `${label} is too large`);
 
+/** One rule for every display name (bidder and seller): 1–50 characters after trimming. */
+export const DISPLAY_NAME_MAX = 50;
+export const displayNameSchema = z
+  .string({ error: "Display name is required" })
+  .trim()
+  .min(1, "Display name is required")
+  .max(DISPLAY_NAME_MAX, `Display name must be at most ${DISPLAY_NAME_MAX} characters`);
+
 /**
  * Create-auction input. "End time in the past" depends on the clock, so the schema is built
  * per request with the caller's `now`: the server passes its own clock, the web form passes
@@ -31,6 +39,8 @@ export function createAuctionInputSchema(now: number) {
       .number({ error: "End time is required" })
       .int("End time must be a timestamp")
       .refine((endsAt) => endsAt > now, "End time must be in the future"),
+    /** Display name of the seller, shown on the auction ("Offered by …"). */
+    sellerName: displayNameSchema,
   });
 }
 
@@ -38,11 +48,7 @@ export type CreateAuctionInput = z.infer<ReturnType<typeof createAuctionInputSch
 
 export const placeBidInputSchema = z.object({
   bidderId: z.uuid("Invalid bidder id"),
-  bidderName: z
-    .string({ error: "Display name is required" })
-    .trim()
-    .min(1, "Display name is required")
-    .max(50, "Display name must be at most 50 characters"),
+  bidderName: displayNameSchema,
   amountCents: amountCents("Bid"),
   /** Id of the leading bid the bidder saw when bidding (null = no bids yet). Distinguishes OUTBID from TOO_LOW. */
   expectedLeadingBidId: z.string().nullable(),

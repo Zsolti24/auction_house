@@ -33,6 +33,11 @@ const MIGRATIONS: string[] = [
 
   CREATE INDEX bids_by_auction ON bids (auction_id, seq);
   `,
+  // 2: seller display name. Existing auctions get '' (the UI then simply omits "Offered by").
+  `
+  ALTER TABLE auctions ADD COLUMN seller_name TEXT NOT NULL DEFAULT '';
+  CREATE INDEX auctions_by_end ON auctions (ends_at);
+  `,
 ];
 
 /** Opens (and creates/migrates if needed) a database. Use ":memory:" for tests. */

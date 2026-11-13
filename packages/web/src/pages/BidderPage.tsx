@@ -3,7 +3,8 @@ import { centsToInputValue, formatCents, parseEuroToCents, type AuctionSnapshot,
 import { ApiRequestError, placeBid } from "../api";
 import { BidList, Countdown, CurrentBid, ItemDetails, ResultBanner } from "../components/AuctionParts";
 import { Layout } from "../components/Layout";
-import { Button, Card, Field, MoneyInput, Notice, TextInput } from "../components/ui";
+import { NameForm } from "../components/NameForm";
+import { Button, Card, Field, MoneyInput, Notice } from "../components/ui";
 import { useAuctionStream } from "../hooks/useAuctionStream";
 import { useServerNow } from "../hooks/useServerNow";
 import { hasParticipated, markParticipated, useBidderIdentity } from "../identity";
@@ -87,36 +88,14 @@ export function BidderPage({ auctionId }: { auctionId: string }) {
                   onChangeName={() => setName(null)}
                 />
               ) : (
-                <NameGate onSubmit={setName} />
+                <div className="border-t border-line pt-6">
+                  <NameForm onSubmit={setName} submitLabel="Join the auction" />
+                </div>
               ))}
           </Card>
         </div>
       </div>
     </Layout>
-  );
-}
-
-function NameGate({ onSubmit }: { onSubmit: (name: string) => void }) {
-  const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return setError("Please enter a display name.");
-    if (trimmed.length > 50) return setError("Display name must be at most 50 characters.");
-    onSubmit(trimmed);
-  };
-
-  return (
-    <form onSubmit={submit} className="space-y-3 border-t border-line pt-6">
-      <Field label="Your display name" errors={error ? [error] : undefined} hint="Shown next to your bids. No account needed.">
-        <TextInput value={name} onChange={(e) => setName(e.target.value)} maxLength={50} autoFocus placeholder="e.g. Anna" />
-      </Field>
-      <Button type="submit" className="w-full">
-        Join the auction
-      </Button>
-    </form>
   );
 }
 

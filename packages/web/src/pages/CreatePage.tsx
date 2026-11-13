@@ -3,7 +3,8 @@ import { createAuctionInputSchema, parseEuroToCents, toFieldErrors } from "@auct
 import { ApiRequestError, createAuction } from "../api";
 import { Layout } from "../components/Layout";
 import { Button, Card, Eyebrow, Field, MoneyInput, Notice, TextArea, TextInput } from "../components/ui";
-import { navigate } from "../router";
+import { useBidderIdentity } from "../identity";
+import { Link, navigate } from "../router";
 
 type Errors = Record<string, string[]>;
 
@@ -22,6 +23,7 @@ function toLocalInput(ms: number): string {
 }
 
 export function CreatePage() {
+  const { identity } = useBidderIdentity(); // RequireName guarantees a name here
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startingPrice, setStartingPrice] = useState("");
@@ -44,6 +46,7 @@ export function CreatePage() {
       startingPriceCents: startingPriceCents ?? undefined,
       minIncrementCents: minIncrementCents ?? undefined,
       endsAt: Number.isNaN(endsAt) ? undefined : endsAt,
+      sellerName: identity.name ?? "",
     };
 
     // Same schema as the server, for instant feedback. The server re-validates with its own clock.
@@ -140,6 +143,14 @@ export function CreatePage() {
             </div>
 
             {formError && <Notice tone="error">{formError}</Notice>}
+            {errors.sellerName && <Notice tone="error">{errors.sellerName.join(" ")}</Notice>}
+
+            <p className="text-sm text-muted">
+              Selling as <span className="font-semibold text-ink">{identity.name}</span> ·{" "}
+              <Link href="/" className="underline underline-offset-2 hover:text-ink">
+                change name
+              </Link>
+            </p>
 
             <Button type="submit" disabled={submitting} className="w-full">
               {submitting ? "Creating…" : "Create auction"}

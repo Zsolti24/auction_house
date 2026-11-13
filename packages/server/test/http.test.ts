@@ -2,7 +2,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AuctionSnapshot, Bid, CreateAuctionResponse, PlaceBidResponse, SellerSnapshot } from "@auction/shared";
+import type {
+  AuctionSnapshot,
+  Bid,
+  CreateAuctionResponse,
+  LiveAuctionsSnapshot,
+  PlaceBidResponse,
+  SellerSnapshot,
+} from "@auction/shared";
 import { auctionInput, bidder, FakeClock, ShiftedClock, T0 } from "./helpers";
 import { startServer } from "./httpHelpers";
 
@@ -182,6 +189,43 @@ describe("HTTP API", () => {
     });
   });
 
+  describe("live auctions list", () => {
+    it("lists running auctions, soonest end first, with current price and bid count", async () => {
+      const later = await createAuction({ title: "Later", endsAt: T0 + 20 * 60_000 });
+      const sooner = await createAuction({ title: "Sooner", endsAt: T0 + 5 * 60_000, sellerName: "Sue" });
+      await placeBid(later.id, { ...bidder("Anna"), amountCents: 12_000, expectedLeadingBidId: null });
+
+      const { status, body } = await server.get<LiveAuctionsSnapshot>("/api/live-auctions");
+      expect(status).toBe(200);
+      expect(body.auctions).toEqual([
+        { id: sooner.id, title: "Sooner", sellerName: "Sue", currentPriceCents: 10_000, bidCount: 0, endsAt: T0 + 5 * 60_000 },
+        { id: later.id, title: "Later", sellerName: "Sam", currentPriceCents: 12_000, bidCount: 1, endsAt: T0 + 20 * 60_000 },
+      ]);
+
+      clock.set(T0 + 5 * 60_000); // "Sooner" has ended
+      expect((await server.get<LiveAuctionsSnapshot>("/api/live-auctions")).body.auctions.map((a) => a.title)).toEqual([
+        "Later",
+      ]);
+    });
+
+    it("pushes the updated list when an auction is created or gets a bid", async () => {
+      const stream = await server.stream<LiveAuctionsSnapshot>("/api/live-auctions/events");
+      expect((await stream.next()).auctions).toEqual([]);
+
+      const { id } = await createAuction({ title: "Lamp" });
+      expect((await stream.next()).auctions).toMatchObject([{ id, title: "Lamp", bidCount: 0 }]);
+
+      await placeBid(id, { ...bidder("Anna"), amountCents: 11_000, expectedLeadingBidId: null });
+      expect((await stream.next()).auctions).toMatchObject([{ id, currentPriceCents: 11_000, bidCount: 1 }]);
+
+      // A rejected bid changes nothing, so the next push is the next real change.
+      await placeBid(id, { ...bidder("Cheap"), amountCents: 1, expectedLeadingBidId: null });
+      const second = await createAuction({ title: "Clock", endsAt: T0 + 60_000 });
+      expect((await stream.next()).auctions.map((a) => a.id)).toEqual([second.id, id]);
+      stream.close();
+    });
+  });
+
   describe("errors", () => {
     it("invalid auction input → 400 with a message per field", async () => {
       const res = await server.post("/api/auctions", auctionInput({ startingPriceCents: 0, endsAt: T0 - 1 }));
@@ -247,6 +291,15 @@ describe("timers and restarts (real timers)", () => {
     expect((await stream.next()).id).toBe(body.id);
     expect(await stream.nextEventOfType("ping", 1_000)).toBe("{}");
     expect(await stream.nextEventOfType("ping", 1_000)).toBe("{}");
+    stream.close();
+  });
+
+  it("an auction disappears from the live list by itself when it ends", async () => {
+    const server = await start();
+    const { body } = await server.post<CreateAuctionResponse>("/api/auctions", auctionInput({ endsAt: clock.now() + 300 }));
+    const stream = await server.stream<LiveAuctionsSnapshot>("/api/live-auctions/events");
+    expect((await stream.next()).auctions.map((a) => a.id)).toEqual([body.id]);
+    expect((await stream.next(2_000)).auctions).toEqual([]); // pushed by the end timer
     stream.close();
   });
 

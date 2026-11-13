@@ -2,9 +2,11 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import {
   createAuctionInputSchema,
   formatCents,
+  LIVE_AUCTIONS_LIMIT,
   placeBidInputSchema,
   RECENT_BIDS_LIMIT,
   type AuctionSnapshot,
+  type LiveAuctionsSnapshot,
   type Bid,
   type BidRejectionReason,
   type CreateAuctionResponse,
@@ -118,6 +120,12 @@ export class AuctionService {
     return this.repo.liveAuctions(this.clock.now());
   }
 
+  /** Public list of running auctions, ending soonest first. */
+  getLiveAuctions(): LiveAuctionsSnapshot {
+    const now = this.clock.now();
+    return { auctions: this.repo.liveSummaries(now, LIVE_AUCTIONS_LIMIT), serverTime: now };
+  }
+
   /** The minimum next bid in the state the bidder saw. Unknown bid id → Infinity (never OUTBID). */
   private minNextAsSeen(auction: AuctionRow, expectedLeadingBidId: string | null): number {
     if (expectedLeadingBidId === null) return auction.startingPriceCents;
@@ -131,6 +139,7 @@ export class AuctionService {
       id: auction.id,
       title: auction.title,
       description: auction.description,
+      sellerName: auction.sellerName,
       startingPriceCents: auction.startingPriceCents,
       minIncrementCents: auction.minIncrementCents,
       createdAt: auction.createdAt,

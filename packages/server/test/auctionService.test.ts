@@ -1,3 +1,4 @@
+import Database from "better-sqlite3";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -289,6 +290,28 @@ describe("persistence across restarts", () => {
     expect(second.service.getSnapshot(id)).toMatchObject({ status: "ended", highestBid: { bidderName: "Bob" } });
     expect(second.service.liveAuctions()).toEqual([]);
     second.db.close();
+  });
+
+  it("upgrades a database created before seller names existed", () => {
+    const dbPath = join(dir, "old.db");
+    // A database exactly as migration 1 left it, with one auction in it.
+    const old = new Database(dbPath);
+    old.exec(`
+      CREATE TABLE auctions (id TEXT PRIMARY KEY, seller_key_hash TEXT NOT NULL, title TEXT NOT NULL,
+        description TEXT NOT NULL, starting_price_cents INTEGER NOT NULL, min_increment_cents INTEGER NOT NULL,
+        created_at INTEGER NOT NULL, ends_at INTEGER NOT NULL);
+      CREATE TABLE bids (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, auction_id TEXT NOT NULL,
+        bidder_id TEXT NOT NULL, bidder_name TEXT NOT NULL, amount_cents INTEGER NOT NULL, created_at INTEGER NOT NULL);
+      INSERT INTO auctions VALUES ('old1', 'hash', 'Old lamp', 'From before', 1000, 100, ${T0}, ${T0 + 60_000});
+    `);
+    old.pragma("user_version = 1");
+    old.close();
+
+    const { db, service } = makeService(dbPath);
+    expect(service.getSnapshot("old1")).toMatchObject({ title: "Old lamp", sellerName: "" });
+    const { id } = service.createAuction(auctionInput({ sellerName: "Sue" }));
+    expect(service.getSnapshot(id).sellerName).toBe("Sue");
+    db.close();
   });
 
   it("does not store the seller key in plain text", () => {

@@ -44,6 +44,7 @@ export function makeService(dbPath = ":memory:", clock = new FakeClock()) {
 export function auctionInput(overrides: Partial<CreateAuctionInput> = {}): CreateAuctionInput {
   return {
     title: "Leica M3",
+    sellerName: "Sam",
     description: "1956 rangefinder, working condition",
     startingPriceCents: 10_000, // €100.00
     minIncrementCents: 500, // €5.00

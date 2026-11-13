@@ -8,6 +8,7 @@ export function ItemDetails({ snapshot }: { snapshot: AuctionSnapshot }) {
     <Card>
       <Eyebrow>{snapshot.status === "live" ? "Live auction" : "Auction closed"}</Eyebrow>
       <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-4xl">{snapshot.title}</h1>
+      {snapshot.sellerName && <p className="mt-1 text-sm text-muted">Offered by {snapshot.sellerName}</p>}
       <p className="mt-4 whitespace-pre-line leading-relaxed text-ink/80">{snapshot.description}</p>
       <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-line pt-5 text-sm">
         <div>

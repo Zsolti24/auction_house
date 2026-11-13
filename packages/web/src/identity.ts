@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 /**
  * Bidder identity without accounts: a random id plus a display name, kept in localStorage so a
@@ -54,18 +54,32 @@ function loadIdentity(): BidderIdentity {
   return identity;
 }
 
+/**
+ * One shared identity for the whole app (a tiny external store), so every component sees a name
+ * change immediately. Writes go to localStorage synchronously — not inside a React state updater,
+ * which would only run on the next render and is lost if the page navigates away first.
+ */
+let current: BidderIdentity | null = null;
+const listeners = new Set<() => void>();
+
+function getIdentity(): BidderIdentity {
+  return (current ??= loadIdentity());
+}
+
+function setIdentityName(name: string | null): void {
+  current = { ...getIdentity(), name: name?.trim() || null };
+  writeStorage(IDENTITY_KEY, JSON.stringify(current));
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function useBidderIdentity() {
-  const [identity, setIdentity] = useState<BidderIdentity>(loadIdentity);
-
-  const setName = useCallback((name: string | null) => {
-    setIdentity((current) => {
-      const next = { ...current, name: name?.trim() || null };
-      writeStorage(IDENTITY_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  return { identity, setName };
+  const identity = useSyncExternalStore(subscribe, getIdentity);
+  return { identity, setName: setIdentityName };
 }
 
 /** Remembers that this browser placed an accepted bid, so "You lost" survives reloads. */

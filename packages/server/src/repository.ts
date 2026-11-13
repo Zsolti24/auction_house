@@ -1,9 +1,10 @@
-import type { Bid } from "@auction/shared";
+import type { AuctionSummary, Bid } from "@auction/shared";
 import type { Db } from "./db";
 
 export interface AuctionRow {
   id: string;
   sellerKeyHash: string;
+  sellerName: string;
   title: string;
   description: string;
   startingPriceCents: number;
@@ -13,7 +14,7 @@ export interface AuctionRow {
 }
 
 const AUCTION_COLUMNS = `
-  id, seller_key_hash AS sellerKeyHash, title, description,
+  id, seller_key_hash AS sellerKeyHash, seller_name AS sellerName, title, description,
   starting_price_cents AS startingPriceCents, min_increment_cents AS minIncrementCents,
   created_at AS createdAt, ends_at AS endsAt`;
 
@@ -28,15 +29,26 @@ export class AuctionRepository {
   constructor(db: Db) {
     this.stmts = {
       insertAuction: db.prepare<AuctionRow>(`
-        INSERT INTO auctions (id, seller_key_hash, title, description, starting_price_cents,
+        INSERT INTO auctions (id, seller_key_hash, seller_name, title, description, starting_price_cents,
                               min_increment_cents, created_at, ends_at)
-        VALUES (@id, @sellerKeyHash, @title, @description, @startingPriceCents,
+        VALUES (@id, @sellerKeyHash, @sellerName, @title, @description, @startingPriceCents,
                 @minIncrementCents, @createdAt, @endsAt)`),
       getAuction: db.prepare<[string], AuctionRow>(`SELECT ${AUCTION_COLUMNS} FROM auctions WHERE id = ?`),
       updateEndsAt: db.prepare<[number, string]>(`UPDATE auctions SET ends_at = ? WHERE id = ?`),
       liveAuctions: db.prepare<[number], AuctionRow>(
         `SELECT ${AUCTION_COLUMNS} FROM auctions WHERE ends_at > ? ORDER BY ends_at`,
       ),
+      // Every accepted bid beats the previous one, so MAX(amount) is the leading bid.
+      liveSummaries: db.prepare<[number, number], AuctionSummary>(`
+        SELECT a.id, a.title, a.seller_name AS sellerName, a.ends_at AS endsAt,
+               COALESCE(MAX(b.amount_cents), a.starting_price_cents) AS currentPriceCents,
+               COUNT(b.seq) AS bidCount
+        FROM auctions a
+        LEFT JOIN bids b ON b.auction_id = a.id
+        WHERE a.ends_at > ?
+        GROUP BY a.id
+        ORDER BY a.ends_at, a.id
+        LIMIT ?`),
 
       insertBid: db.prepare<Bid & { auctionId: string }>(`
         INSERT INTO bids (id, auction_id, bidder_id, bidder_name, amount_cents, created_at)
@@ -66,6 +78,10 @@ export class AuctionRepository {
 
   liveAuctions(now: number): AuctionRow[] {
     return this.stmts.liveAuctions.all(now);
+  }
+
+  liveSummaries(now: number, limit: number): AuctionSummary[] {
+    return this.stmts.liveSummaries.all(now, limit);
   }
 
   insertBid(auctionId: string, bid: Bid): void {

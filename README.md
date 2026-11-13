@@ -19,8 +19,9 @@ pnpm test        # run all tests
 pnpm typecheck   # type-check all packages
 ```
 
-Open http://localhost:5173, create an auction, then open the bidder link in a second browser
-(or a private window, so it gets its own bidder identity).
+Open http://localhost:5173, enter a display name and choose **Create an auction**. In a second
+browser (or a private window, so it gets its own identity) enter another name and choose
+**Bid on an auction**: the new auction is in the live list, and the list updates by itself.
 
 The database is a single SQLite file at `packages/server/data/auction.db` (override with `DB_PATH`;
 the server port with `PORT`). Delete the file to start from scratch.
@@ -31,8 +32,16 @@ the server port with `PORT`). Delete the file to start from scratch.
 packages/
   shared/   domain types, zod validation schemas, money helpers — used by server AND web
   server/   Fastify API, bidding rules, SQLite persistence, SSE fan-out, end timers
-  web/      React app: create page, bidder page, seller page
+  web/      React app (pages below)
 ```
+
+| Page | What it does |
+|---|---|
+| `/` | Landing: display name + **Bid on an auction** / **Create an auction** (both need a name) |
+| `/auctions` | Live list of running auctions, ending soonest first; updates in real time |
+| `/create` | Create an auction (the seller's display name is stored with it) |
+| `/a/:id` | Bidder page (asks for a name inline if you came straight from a shared link) |
+| `/a/:id/seller?key=…` | Seller page: share links, every bid live, result |
 
 ```
  browser ──POST /bids──────────────▶ Fastify route ─▶ AuctionService.placeBid
@@ -42,6 +51,7 @@ packages/
     │                                                    ▼
     └──── SSE: full snapshot ◀── AuctionHub.publish ◀── on every accepted change
                                  EndTimers ─────────────▶ publish at the end time
+ live list page ◀── SSE: full list ◀── AuctionHub.publishLobby ◀── create / accepted bid / end
 ```
 
 Key decisions (more detail and alternatives in [ROADMAP.md](ROADMAP.md#decisions)):
@@ -58,9 +68,13 @@ Key decisions (more detail and alternatives in [ROADMAP.md](ROADMAP.md#decisions
   the form (instant feedback) and the server (the check that counts).
 - **Money is integer cents everywhere.** User input like `152,50` is parsed as text, never with
   `parseFloat` (`parseFloat("0.29") * 100` is `28.999…`).
-- **No accounts.** A bidder is a random UUID plus a display name in `localStorage`, so a reload
-  keeps both. "You won" is decided by the id, so two bidders called Anna are never confused.
-  The seller gets a secret key in their link; only its SHA-256 hash is stored.
+- **No accounts.** A participant is a random UUID plus one display name in `localStorage`, used
+  both for bidding and as the seller name ("Offered by …"); a reload keeps both. "You won" is
+  decided by the id, so two bidders called Anna are never confused. The seller gets a secret key
+  in their link; only its SHA-256 hash is stored.
+- **The live list works like an auction page.** Its own SSE stream sends the full list (running
+  auctions, current price, bid count, end time) on connect and whenever an auction is created,
+  gets an accepted bid or ends. Same reconnect logic as the auction pages.
 
 ## Concurrency and time
 
@@ -103,7 +117,7 @@ for 25 s replaces the connection, because a proxy can keep a dead stream looking
 ## Tests
 
 ```bash
-pnpm test                               # everything (117 tests)
+pnpm test                               # everything (124 tests)
 pnpm --filter @auction/server test      # one package
 ```
 
@@ -112,7 +126,7 @@ pnpm --filter @auction/server test      # one package
 | [shared/test](packages/shared/test) | Money parsing and formatting edge cases; validation rules and messages (price/increment ≤ 0, end time in the past, length limits) |
 | [server/test/domain.test.ts](packages/server/test/domain.test.ts) | Pure rules: end-time boundary, minimum next bid, TOO_LOW vs OUTBID vs AUCTION_ENDED, anti-sniping at 30.001 s / 30 s / 1 ms |
 | [server/test/auctionService.test.ts](packages/server/test/auctionService.test.ts) | Service + real SQLite with a fake clock: main flow, same-moment bids, anti-sniping chains, seller key, persistence across a restart |
-| [server/test/http.test.ts](packages/server/test/http.test.ts) | Real HTTP on a random port: everything below, plus SSE pushes, error codes, heartbeat |
+| [server/test/http.test.ts](packages/server/test/http.test.ts) | Real HTTP on a random port: everything below, plus SSE pushes, error codes, heartbeat, the live list (contents, order, pushes on create / bid / end) |
 | [web/test](packages/web/test) | View logic: which snapshot is newer, leading / outbid / won / lost, countdown formatting |
 
 The four required scenarios, over real HTTP:
@@ -128,7 +142,8 @@ The four required scenarios, over real HTTP:
 
 Other risky behaviour that is tested: a server restart in the middle of an auction (same state
 and winner, and the "ended" push still arrives), a bid exactly at `endsAt`, a rejected late bid
-not extending the auction, and the seller key not being stored in plain text.
+not extending the auction, the seller key not being stored in plain text, and upgrading a
+database created before seller names existed.
 
 How I checked the tests themselves: I broke three rules on purpose (bids allowed at the exact
 end, anti-sniping disabled, `OUTBID` never reported), and each change made 3–6 tests fail. I also
@@ -153,9 +168,15 @@ including killing the server for 30 s in the middle of an auction.
   milliseconds). It only affects the display; the server decides.
 - **Dead-connection detection takes up to ~25 s** behind a proxy that hides the disconnect.
 - **The bidder view shows the 10 most recent bids**; the seller view shows all of them, without
-  pagination.
-- **Optional extras** (end early, list of live auctions, outbid sound) are being added as
-  separate commits; see [ROADMAP.md](ROADMAP.md#phase-7--extras-separate-commits-each).
+  pagination. The live list shows at most 100 auctions and is not searchable.
+- **The live list is rebuilt on every change.** Any accepted bid anywhere pushes the whole list
+  to everyone on the list page. Fine at this scale; with many busy auctions I would throttle
+  these pushes (e.g. at most one per second) or send per-auction updates.
+- **Migrations are numbered, not named.** A migration that was applied locally and then reverted
+  in git leaves the database "ahead" of the code (this happened to me during development; see
+  the AI-validation log). A real project would record migration names/checksums and fail loudly.
+- **Optional extras:** the live auctions list is done. Ending early and the outbid sound are
+  being added as separate commits; see [ROADMAP.md](ROADMAP.md#phase-7--extras-separate-commits-each).
 
 ## AI usage
 

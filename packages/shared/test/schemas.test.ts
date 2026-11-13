@@ -9,6 +9,7 @@ const validAuction = {
   startingPriceCents: 10000,
   minIncrementCents: 250,
   endsAt: NOW + 60_000,
+  sellerName: "Sam",
 };
 
 function auctionErrors(input: unknown) {
@@ -65,9 +66,17 @@ describe("createAuctionInputSchema", () => {
       "description",
       "endsAt",
       "minIncrementCents",
+      "sellerName",
       "startingPriceCents",
       "title",
     ]);
+  });
+
+  it.each([
+    ["blank", "   ", "Display name is required"],
+    ["too long", "a".repeat(51), "Display name must be at most 50 characters"],
+  ])("rejects a %s seller name", (_label, sellerName, message) => {
+    expect(auctionErrors({ ...validAuction, sellerName })).toEqual({ sellerName: [message] });
   });
 });
 
