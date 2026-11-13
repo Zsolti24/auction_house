@@ -1,26 +1,108 @@
 @import "tailwindcss";
 
+/*
+ * "Liquid glass" theme: translucent, blurred panels floating over a soft colour field,
+ * system (SF) typography, iOS accent colours. Light only, by design.
+ */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
 
-  --color-paper: #f7f3ec;
-  --color-card: #fffdf9;
-  --color-ink: #1c1917;
-  --color-muted: #78716c;
-  --color-line: #e7dfd2;
-  --color-accent: #9f1239;
-  --color-accent-dark: #7f1d1d;
-  --color-accent-soft: #fde8ec;
-  --color-success: #166534;
-  --color-success-soft: #e7f5ea;
-  --color-warning: #b45309;
-  --color-warning-soft: #fdf1e1;
+  --color-ink: #1d1d1f;
+  --color-muted: #6e6e73;
+  --color-line: rgb(255 255 255 / 0.65);
+  --color-hairline: rgb(29 29 31 / 0.08);
+
+  --color-accent: #007aff;
+  --color-accent-dark: #0062cc;
+  --color-accent-soft: rgb(0 122 255 / 0.12);
+  --color-danger: #ff3b30;
+  --color-danger-soft: rgb(255 59 48 / 0.12);
+  --color-success: #248a3d;
+  --color-success-soft: rgb(52 199 89 / 0.16);
+  --color-warning: #c93400;
+  --color-warning-soft: rgb(255 149 0 / 0.16);
+}
+
+/* Frosted glass panel. */
+@utility glass {
+  background: rgb(255 255 255 / 0.55);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.7);
+  box-shadow:
+    0 10px 40px -12px rgb(30 40 90 / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.9);
+}
+
+/* Lighter glass for controls sitting on a glass panel (inputs, secondary buttons). */
+@utility glass-control {
+  background: rgb(255 255 255 / 0.6);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid rgb(29 29 31 / 0.08);
+}
+
+/*
+ * Pointer cursor on everything clickable. Tailwind v4's reset gives buttons the default arrow;
+ * setting it once here covers every current and future button. Disabled buttons keep their
+ * `cursor-not-allowed` (utilities win over this base layer).
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"],
+  a[href],
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+}
+
+html {
+  background: #eef1f8;
 }
 
 body {
-  background: var(--color-paper);
+  min-height: 100vh;
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* Soft colour field the glass refracts. Fixed so it doesn't scroll with the content. */
+  background:
+    radial-gradient(40rem 40rem at 10% -10%, rgb(120 170 255 / 0.55), transparent 60%),
+    radial-gradient(36rem 36rem at 95% 10%, rgb(255 160 210 / 0.45), transparent 60%),
+    radial-gradient(44rem 44rem at 70% 110%, rgb(150 230 210 / 0.5), transparent 60%),
+    radial-gradient(30rem 30rem at 0% 90%, rgb(190 170 255 / 0.45), transparent 60%),
+    #eef1f8;
+  background-attachment: fixed;
+}
+
+/*
+ * Toasts (react-toastify) in the same glass style. The variables are set on the toast wrapper,
+ * not :root — react-toastify injects its own :root defaults after this file, which would win.
+ */
+.Toastify {
+  --toastify-toast-top: 76px; /* below the floating header instead of covering it */
+  --toastify-font-family: var(--font-sans);
+  --toastify-color-light: rgb(255 255 255 / 0.72);
+  --toastify-text-color-light: var(--color-ink);
+  --toastify-color-success: #34c759;
+  --toastify-color-error: #ff3b30;
+  --toastify-color-warning: #ff9500;
+  --toastify-color-info: #007aff;
+  --toastify-toast-bd-radius: 18px;
+  --toastify-toast-min-height: 56px;
+}
+
+.Toastify__toast {
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgb(255 255 255 / 0.75);
+  box-shadow: 0 12px 40px -12px rgb(30 40 90 / 0.3);
+  font-size: 0.9rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }

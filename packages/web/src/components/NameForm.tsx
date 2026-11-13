@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { DISPLAY_NAME_MAX, displayNameSchema } from "@auction/shared";
 import { useBidderIdentity } from "../identity";
+import { notify } from "../notify";
 import { Layout } from "./Layout";
 import { Button, Card, Eyebrow, Field, TextInput } from "./ui";
 
@@ -18,7 +19,12 @@ export function NameForm({ onSubmit, submitLabel }: { onSubmit: (name: string) =
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const problem = displayNameError(name);
-    if (problem) return setError(problem);
+    if (problem) {
+      setError(problem);
+      notify.error(problem, "name-required");
+      return;
+    }
+    notify.success(`Welcome, ${name.trim()}!`, "name-set");
     onSubmit(name.trim());
   };
 
@@ -53,7 +59,7 @@ export function RequireName({ children, purpose }: { children: ReactNode; purpos
     <Layout>
       <Card className="mx-auto max-w-md">
         <Eyebrow>One quick thing</Eyebrow>
-        <h1 className="mt-2 font-display text-2xl font-bold">What should we call you?</h1>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">What should we call you?</h1>
         <p className="mt-2 mb-5 text-muted">You need a display name to {purpose}.</p>
         <NameForm onSubmit={setName} submitLabel="Continue" />
       </Card>

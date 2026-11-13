@@ -1,4 +1,4 @@
-import type { AuctionSnapshot, LiveAuctionsSnapshot } from "@auction/shared";
+import type { AuctionSnapshot, AuctionListSnapshot } from "@auction/shared";
 import { pickNewer, pickNewerList } from "../lib/view";
 import { useEventStream } from "./useEventStream";
 
@@ -10,11 +10,11 @@ export function useAuctionStream<T extends AuctionSnapshot>(streamUrl: string, p
   return { snapshot: data, ...rest };
 }
 
-/** The live-auctions list. */
-export function useLiveAuctions() {
-  const { data, ...rest } = useEventStream<LiveAuctionsSnapshot>(
-    "/api/live-auctions/events",
-    "/api/live-auctions",
+/** The auction list (lobby): running and recently ended auctions. */
+export function useAuctionList() {
+  const { data, ...rest } = useEventStream<AuctionListSnapshot>(
+    "/api/lobby/events",
+    "/api/lobby",
     pickNewerList,
   );
   return { list: data, ...rest };

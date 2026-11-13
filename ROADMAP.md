@@ -57,8 +57,8 @@ the state from `now`.
 | `GET /api/auctions/:id/events` | SSE: full snapshot on connect and after every change |
 | `GET /api/auctions/:id/seller?key=…` | Seller view with all bids |
 | `POST /api/auctions/:id/close` | *Extra*: end early (only before the first bid) |
-| `GET /api/live-auctions` | *Extra*: list of live auctions (soonest end first) |
-| `GET /api/live-auctions/events` | *Extra*: SSE, full list on connect and on every create / accepted bid / end |
+| `GET /api/lobby` | *Extra*: auction list — `live` (soonest end first) and `ended` (most recent first, max 20), each with leader / winner |
+| `GET /api/lobby/events` | *Extra*: SSE, both lists on connect and on every create / accepted bid / end |
 
 Every SSE message is a full snapshot, not a diff, so clients can never drift from the
 server state; reconnect = fresh state.
@@ -122,8 +122,20 @@ server state; reconnect = fresh state.
       Both need a name; the name is also stored as the seller name ("Offered by …", migration 2).
 - [x] List of live auctions (`/auctions`): real-time via its own SSE stream, cards with title,
       seller, current price, bid count, countdown; ended auctions drop off by themselves (+ tests)
+- [x] Redesign (requested): clean iOS-like "liquid glass" theme — frosted panels, system font,
+      iOS blue accent, separate red for errors, floating glass header
+- [x] Toasts (react-toastify) for every piece of user feedback, in addition to the inline
+      messages; ids on repeatable toasts (outbid, connection, new bid) to avoid piles
+- [x] Fix: long unbroken text (title / description / name) pushed the auction page wider than
+      the screen — `wrap-anywhere` on user text, `min-w-0` on grid columns; checked at 1280 px
+      and 390 px
+- [x] Pointer cursor on everything clickable (global base style; disabled buttons keep `not-allowed`)
+- [x] Ended auctions listed below the running ones on `/auctions` (requested): result
+      ("Sold to X for €Y" / "Ended without bids"), most recent first; an auction moves from the
+      top list to the bottom one by itself when it ends. Endpoint renamed `/api/live-auctions` →
+      `/api/lobby` since it is no longer only live auctions (+ tests)
 - [ ] Seller can end early, only before the first bid (+ test)
-- [ ] Outbid cue (sound + visual)
+- [ ] Outbid cue (sound + flash); the outbid toast already covers part of it
 
 ## AI-validation log
 
@@ -170,3 +182,12 @@ output was wrong or weak, how it was caught and what changed.
   the server log said a column was missing. Fixed by stopping every leftover process (there were
   four), moving the dev database aside, and from now on stopping dev servers by process, not by
   port.
+- **A long description broke the page.** I noticed that a long comment without spaces pushed the
+  auction page off the screen — in the browser it became almost four times wider than the
+  window. The agent had only ever tested with normal sentences. Fixed so long words wrap inside
+  their card, and re-checked on desktop and phone width with a deliberately silly 400-character
+  word.
+- **The new toast styling was silently ignored (redesign).** The toasts came out plain white and
+  on top of the header instead of glassy and below it. The toast library loads its own styles
+  after ours and overrode the settings. Spotted on the screenshot, fixed by applying the
+  settings where the library can't override them.

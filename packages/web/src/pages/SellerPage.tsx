@@ -1,10 +1,12 @@
-import type { SellerSnapshot } from "@auction/shared";
+import { useEffect, useRef } from "react";
+import { formatCents, type SellerSnapshot } from "@auction/shared";
 import { BidList, Countdown, CurrentBid, ItemDetails, ResultBanner } from "../components/AuctionParts";
 import { CopyLink } from "../components/CopyLink";
 import { Layout } from "../components/Layout";
 import { Card, Notice } from "../components/ui";
 import { useAuctionStream } from "../hooks/useAuctionStream";
 import { useServerNow } from "../hooks/useServerNow";
+import { notify } from "../notify";
 import { Loading, Unavailable } from "./states";
 
 export function SellerPage({ auctionId, sellerKey, justCreated }: { auctionId: string; sellerKey: string; justCreated: boolean }) {
@@ -15,6 +17,7 @@ export function SellerPage({ auctionId, sellerKey, justCreated }: { auctionId: s
     `/api/auctions/${id}/seller?key=${key}`,
   );
   const serverNow = useServerNow(clockOffset);
+  useSellerToasts(snapshot);
 
   if (failure) return <Unavailable message={failure} connection={connection} />;
   if (!snapshot) return <Loading connection={connection} />;
@@ -35,7 +38,7 @@ export function SellerPage({ auctionId, sellerKey, justCreated }: { auctionId: s
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr]">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <ItemDetails snapshot={snapshot} />
           <BidList
             bids={snapshot.bids}
@@ -44,8 +47,8 @@ export function SellerPage({ auctionId, sellerKey, justCreated }: { auctionId: s
           />
         </div>
 
-        <div className="order-first space-y-6 lg:order-none lg:sticky lg:top-6 lg:self-start">
-          <Card className="space-y-6">
+        <div className="order-first min-w-0 space-y-6 lg:order-none lg:sticky lg:top-24 lg:self-start">
+          <Card className="space-y-5">
             <CurrentBid snapshot={snapshot} />
             <Countdown snapshot={snapshot} serverNow={serverNow} />
           </Card>
@@ -61,4 +64,26 @@ export function SellerPage({ auctionId, sellerKey, justCreated }: { auctionId: s
       </div>
     </Layout>
   );
+}
+
+/** Toast for every new bid while the seller watches, and for the end of the auction. */
+function useSellerToasts(snapshot: SellerSnapshot | null) {
+  const previous = useRef<SellerSnapshot | null>(null);
+  useEffect(() => {
+    const prev = previous.current;
+    previous.current = snapshot;
+    if (!prev || !snapshot) return;
+
+    const newest = snapshot.bids[0];
+    if (newest && newest.id !== prev.bids[0]?.id) {
+      notify.info(`New bid: ${newest.bidderName} — ${formatCents(newest.amountCents)}`, `seller-bid-${newest.id}`);
+    }
+    if (prev.status === "live" && snapshot.status === "ended") {
+      const winner = snapshot.highestBid;
+      notify.success(
+        winner ? `Sold to ${winner.bidderName} for ${formatCents(winner.amountCents)}.` : "The auction ended without bids.",
+        `seller-ended-${snapshot.id}`,
+      );
+    }
+  }, [snapshot]);
 }

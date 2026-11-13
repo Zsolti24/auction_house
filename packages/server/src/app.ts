@@ -74,12 +74,15 @@ export function buildApp({ dbPath, clock = systemClock, sseHeartbeatMs = 10_000 
     return reply.status(201).send(created);
   });
 
-  /** Running auctions, ending soonest first. */
-  app.get("/api/live-auctions", async () => service.getLiveAuctions());
+  /** Auction list: running auctions (ending soonest first) and recently ended ones. */
+  app.get("/api/lobby", async () => service.getAuctionList());
 
-  /** Live list as SSE: full list on connect and whenever an auction is created, bid on or ends. */
-  app.get("/api/live-auctions/events", (request, reply) => {
-    openEventStream(request, reply, service.getLiveAuctions(), sseHeartbeatMs, (send) => hub.subscribeLobby(send));
+  /**
+   * Auction list as SSE: full lists on connect and whenever an auction is created, bid on or
+   * ends (the end timer's publish moves it from `live` to `ended` for everyone).
+   */
+  app.get("/api/lobby/events", (request, reply) => {
+    openEventStream(request, reply, service.getAuctionList(), sseHeartbeatMs, (send) => hub.subscribeLobby(send));
   });
 
   app.get<IdParams>("/api/auctions/:id", async (request) => service.getSnapshot(request.params.id));

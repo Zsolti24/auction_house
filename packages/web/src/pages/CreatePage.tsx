@@ -4,6 +4,7 @@ import { ApiRequestError, createAuction } from "../api";
 import { Layout } from "../components/Layout";
 import { Button, Card, Eyebrow, Field, MoneyInput, Notice, TextArea, TextInput } from "../components/ui";
 import { useBidderIdentity } from "../identity";
+import { notify } from "../notify";
 import { Link, navigate } from "../router";
 
 type Errors = Record<string, string[]>;
@@ -55,15 +56,26 @@ export function CreatePage() {
     if (startingPrice.trim() && startingPriceCents === null) found.startingPriceCents = ["Enter an amount like 150 or 150.50"];
     if (minIncrement.trim() && minIncrementCents === null) found.minIncrementCents = ["Enter an amount like 5 or 2.50"];
     setErrors(found);
-    if (!parsed.success || Object.keys(found).length > 0) return;
+    const problems = Object.keys(found).length;
+    if (!parsed.success || problems > 0) {
+      notify.error(`Please fix ${problems === 1 ? "the highlighted field" : `the ${problems} highlighted fields`}.`, "create-invalid");
+      return;
+    }
 
     setSubmitting(true);
     try {
       const { id, sellerKey } = await createAuction(parsed.data);
+      notify.success("Your auction is live. Share the bidder link!");
       navigate(`/a/${id}/seller?key=${encodeURIComponent(sellerKey)}&created=1`);
     } catch (err) {
-      if (err instanceof ApiRequestError && err.body?.fieldErrors) setErrors(err.body.fieldErrors);
-      else setFormError(err instanceof Error ? err.message : "Something went wrong");
+      if (err instanceof ApiRequestError && err.body?.fieldErrors) {
+        setErrors(err.body.fieldErrors);
+        notify.error(Object.values(err.body.fieldErrors).flat().join(" "), "create-invalid");
+      } else {
+        const message = err instanceof Error ? err.message : "Something went wrong";
+        setFormError(message);
+        notify.error(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -73,7 +85,7 @@ export function CreatePage() {
     <Layout>
       <div className="mx-auto max-w-2xl">
         <Eyebrow>New auction</Eyebrow>
-        <h1 className="mt-2 font-display text-4xl font-bold tracking-tight">Put something under the hammer</h1>
+        <h1 className="mt-1 text-4xl font-bold tracking-tight">Put something under the hammer</h1>
         <p className="mt-3 text-muted">
           Describe the item, set the price rules and an end time. You'll get a link to share with bidders and a private
           link to watch the auction live.
@@ -135,7 +147,7 @@ export function CreatePage() {
                   key={preset.label}
                   type="button"
                   onClick={() => setEndsAtLocal(toLocalInput(Date.now() + preset.ms))}
-                  className="rounded-full border border-line bg-white px-3 py-1 text-sm hover:border-ink/30"
+                  className="glass-control rounded-full px-3.5 py-1.5 text-[13px] font-medium transition hover:bg-white/85 active:scale-95"
                 >
                   in {preset.label}
                 </button>
@@ -145,14 +157,14 @@ export function CreatePage() {
             {formError && <Notice tone="error">{formError}</Notice>}
             {errors.sellerName && <Notice tone="error">{errors.sellerName.join(" ")}</Notice>}
 
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted wrap-anywhere">
               Selling as <span className="font-semibold text-ink">{identity.name}</span> ·{" "}
-              <Link href="/" className="underline underline-offset-2 hover:text-ink">
+              <Link href="/" className="text-accent hover:underline">
                 change name
               </Link>
             </p>
 
-            <Button type="submit" disabled={submitting} className="w-full">
+            <Button type="submit" disabled={submitting} className="w-full py-3.5 text-base">
               {submitting ? "Creating…" : "Create auction"}
             </Button>
           </form>

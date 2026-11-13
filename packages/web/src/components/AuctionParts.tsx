@@ -3,19 +3,26 @@ import { formatCents, type AuctionSnapshot, type Bid } from "@auction/shared";
 import { formatClockTime, formatRemaining } from "../lib/view";
 import { Card, cx, Eyebrow } from "./ui";
 
+/*
+ * All user-provided text (title, description, names) uses `wrap-anywhere`, so a long word or a
+ * pasted URL breaks onto the next line instead of pushing the page wider than the screen.
+ */
+
 export function ItemDetails({ snapshot }: { snapshot: AuctionSnapshot }) {
   return (
     <Card>
       <Eyebrow>{snapshot.status === "live" ? "Live auction" : "Auction closed"}</Eyebrow>
-      <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-4xl">{snapshot.title}</h1>
-      {snapshot.sellerName && <p className="mt-1 text-sm text-muted">Offered by {snapshot.sellerName}</p>}
-      <p className="mt-4 whitespace-pre-line leading-relaxed text-ink/80">{snapshot.description}</p>
-      <dl className="mt-6 grid grid-cols-2 gap-4 border-t border-line pt-5 text-sm">
-        <div>
+      <h1 className="mt-1 text-3xl font-bold tracking-tight wrap-anywhere sm:text-[34px] sm:leading-tight">
+        {snapshot.title}
+      </h1>
+      {snapshot.sellerName && <p className="mt-1 text-sm text-muted wrap-anywhere">Offered by {snapshot.sellerName}</p>}
+      <p className="mt-4 whitespace-pre-line leading-relaxed text-ink/80 wrap-anywhere">{snapshot.description}</p>
+      <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
+        <div className="glass-control rounded-2xl px-4 py-3">
           <dt className="text-muted">Starting price</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">{formatCents(snapshot.startingPriceCents)}</dd>
         </div>
-        <div>
+        <div className="glass-control rounded-2xl px-4 py-3">
           <dt className="text-muted">Minimum increment</dt>
           <dd className="mt-0.5 font-semibold tabular-nums">{formatCents(snapshot.minIncrementCents)}</dd>
         </div>
@@ -31,10 +38,10 @@ export function CurrentBid({ snapshot, myId }: { snapshot: AuctionSnapshot; myId
   return (
     <div>
       <Eyebrow>{ended ? (bid ? "Winning bid" : "Result") : bid ? "Current bid" : "Opening bid"}</Eyebrow>
-      <p className="mt-1 font-display text-5xl font-bold tabular-nums tracking-tight">
+      <p className="mt-0.5 text-[52px] font-bold leading-none tracking-tight tabular-nums">
         {formatCents(bid?.amountCents ?? snapshot.startingPriceCents)}
       </p>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-2 text-sm text-muted wrap-anywhere">
         {bid ? (
           <>
             by <span className="font-semibold text-ink">{bid.bidderName}</span>
@@ -56,31 +63,28 @@ export function CurrentBid({ snapshot, myId }: { snapshot: AuctionSnapshot; myId
  */
 export function Countdown({ snapshot, serverNow }: { snapshot: AuctionSnapshot; serverNow: number }) {
   const remaining = snapshot.endsAt - serverNow;
-  const extendedAt = useExtensionFlash(snapshot.endsAt, snapshot.status === "live");
+  const extended = useExtensionFlash(snapshot.endsAt, snapshot.status === "live");
 
   if (snapshot.status === "ended") {
     return (
-      <div>
+      <div className="glass-control rounded-2xl px-4 py-3">
         <Eyebrow>Auction</Eyebrow>
-        <p className="mt-1 font-display text-3xl font-bold">Ended</p>
-        <p className="mt-1 text-sm text-muted">at {formatClockTime(snapshot.endsAt)}</p>
+        <p className="text-2xl font-bold tracking-tight">Ended</p>
+        <p className="text-sm text-muted">at {formatClockTime(snapshot.endsAt)}</p>
       </div>
     );
   }
 
   const urgent = remaining <= 30_000;
   return (
-    <div>
+    <div className={cx("glass-control rounded-2xl px-4 py-3 transition", urgent && "bg-danger-soft")}>
       <Eyebrow>Time remaining</Eyebrow>
-      <p
-        className={cx("mt-1 font-display text-3xl font-bold tabular-nums", urgent && "text-accent")}
-        aria-live="off"
-      >
+      <p className={cx("text-3xl font-bold tracking-tight tabular-nums", urgent && "text-danger")} aria-live="off">
         {remaining > 0 ? formatRemaining(remaining) : "Closing…"}
       </p>
-      <p className="mt-1 text-sm text-muted">
+      <p className="text-sm text-muted">
         Ends at {formatClockTime(snapshot.endsAt)}
-        {extendedAt && <span className="ml-2 font-semibold text-warning">Extended by a late bid</span>}
+        {extended && <span className="ml-2 font-semibold text-warning">Extended by a late bid</span>}
       </p>
     </div>
   );
@@ -105,14 +109,14 @@ function useExtensionFlash(endsAt: number, live: boolean): boolean {
 export function BidList({ bids, myId, title, emptyText }: { bids: Bid[]; myId?: string; title: string; emptyText: string }) {
   return (
     <Card>
-      <h2 className="font-display text-xl font-bold">{title}</h2>
+      <h2 className="text-xl font-bold tracking-tight">{title}</h2>
       {bids.length === 0 ? (
         <p className="mt-3 text-sm text-muted">{emptyText}</p>
       ) : (
-        <ol className="mt-3 divide-y divide-line">
+        <ol className="mt-3 divide-y divide-hairline">
           {bids.map((bid, i) => (
             <li key={bid.id} className="flex items-center justify-between gap-4 py-3 text-sm">
-              <span className="min-w-0">
+              <span className="min-w-0 wrap-anywhere">
                 <span className={cx("font-semibold", i === 0 && "text-accent")}>{bid.bidderName}</span>
                 {myId && bid.bidderId === myId && <span className="ml-1.5 text-muted">(you)</span>}
                 <span className="ml-2 text-muted tabular-nums">{formatClockTime(bid.createdAt)}</span>
@@ -134,13 +138,13 @@ export function ResultBanner({ snapshot, personal }: { snapshot: AuctionSnapshot
   return (
     <div
       className={cx(
-        "rounded-2xl border p-6 text-center",
-        personal === "won" ? "border-success/30 bg-success-soft" : "border-line bg-card",
+        "glass rounded-[28px] p-6 text-center wrap-anywhere",
+        personal === "won" && "bg-success-soft",
       )}
     >
-      {personal === "won" && <p className="font-display text-4xl font-bold text-success">You won</p>}
-      {personal === "lost" && <p className="font-display text-3xl font-bold">You lost</p>}
-      <p className={cx("font-display font-bold", personal ? "mt-2 text-xl" : "text-3xl")}>
+      {personal === "won" && <p className="text-4xl font-bold tracking-tight text-success">You won</p>}
+      {personal === "lost" && <p className="text-3xl font-bold tracking-tight">You lost</p>}
+      <p className={cx("font-bold tracking-tight", personal ? "mt-1 text-lg text-ink/80" : "text-3xl")}>
         {winner ? `Sold to ${winner.bidderName} for ${formatCents(winner.amountCents)}` : "Ended without bids"}
       </p>
     </div>

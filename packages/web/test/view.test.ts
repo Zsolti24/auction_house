@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuctionSnapshot, Bid } from "@auction/shared";
-import { bidderStanding, formatRemaining, pickNewer, pickNewerList } from "../src/lib/view";
+import { bidderStanding, formatRemaining, pickNewer, pickNewerList, wasOutbid } from "../src/lib/view";
 
 const ME = "me-id";
 const OTHER = "other-id";
@@ -55,12 +55,28 @@ describe("pickNewer", () => {
 });
 
 describe("pickNewerList", () => {
-  it("keeps the live list with the latest server time", () => {
-    const older = { auctions: [], serverTime: 1000 };
-    const newer = { auctions: [], serverTime: 2000 };
+  it("keeps the auction list with the latest server time", () => {
+    const older = { live: [], ended: [], serverTime: 1000 };
+    const newer = { live: [], ended: [], serverTime: 2000 };
     expect(pickNewerList(null, older)).toBe(older);
     expect(pickNewerList(older, newer)).toBe(newer);
     expect(pickNewerList(newer, older)).toBe(newer);
+  });
+});
+
+describe("wasOutbid", () => {
+  const mine = bid(ME, 1000);
+  const theirs = bid(OTHER, 1100);
+
+  it("is true only on the transition from me leading to someone else leading", () => {
+    expect(wasOutbid(snapshot({ highestBid: mine }), snapshot({ highestBid: theirs }), ME)).toBe(true);
+  });
+
+  it("is false when I keep the lead, when I wasn't leading, and on the first snapshot", () => {
+    const myHigher = bid(ME, 1200);
+    expect(wasOutbid(snapshot({ highestBid: mine }), snapshot({ highestBid: myHigher }), ME)).toBe(false);
+    expect(wasOutbid(snapshot({ highestBid: theirs }), snapshot({ highestBid: bid(OTHER, 1300) }), ME)).toBe(false);
+    expect(wasOutbid(null, snapshot({ highestBid: theirs }), ME)).toBe(false);
   });
 });
 

@@ -3,7 +3,7 @@
 A small real-time auction app: a seller creates an auction and shares a link, bidders compete live,
 and the server decides who wins. Built for the Square21 fullstack engineering assessment.
 
-**Stack:** TypeScript · pnpm workspaces · Node + Fastify · SQLite (`better-sqlite3`) · REST + Server-Sent Events · React + Vite + Tailwind · Vitest
+**Stack:** TypeScript · pnpm workspaces · Node + Fastify · SQLite (`better-sqlite3`) · REST + Server-Sent Events · React + Vite + Tailwind + react-toastify · Vitest
 
 The step-by-step plan, every design decision and the progress checklist are in [ROADMAP.md](ROADMAP.md).
 
@@ -38,7 +38,7 @@ packages/
 | Page | What it does |
 |---|---|
 | `/` | Landing: display name + **Bid on an auction** / **Create an auction** (both need a name) |
-| `/auctions` | Live list of running auctions, ending soonest first; updates in real time |
+| `/auctions` | Auction list, updating in real time: running auctions on top (ending soonest first, with the current leader), ended ones below (most recent first, with the result) |
 | `/create` | Create an auction (the seller's display name is stored with it) |
 | `/a/:id` | Bidder page (asks for a name inline if you came straight from a shared link) |
 | `/a/:id/seller?key=…` | Seller page: share links, every bid live, result |
@@ -51,7 +51,7 @@ packages/
     │                                                    ▼
     └──── SSE: full snapshot ◀── AuctionHub.publish ◀── on every accepted change
                                  EndTimers ─────────────▶ publish at the end time
- live list page ◀── SSE: full list ◀── AuctionHub.publishLobby ◀── create / accepted bid / end
+ auction list page ◀── SSE: live + ended lists ◀── AuctionHub.publishLobby ◀── create / accepted bid / end
 ```
 
 Key decisions (more detail and alternatives in [ROADMAP.md](ROADMAP.md#decisions)):
@@ -72,9 +72,24 @@ Key decisions (more detail and alternatives in [ROADMAP.md](ROADMAP.md#decisions
   both for bidding and as the seller name ("Offered by …"); a reload keeps both. "You won" is
   decided by the id, so two bidders called Anna are never confused. The seller gets a secret key
   in their link; only its SHA-256 hash is stored.
-- **The live list works like an auction page.** Its own SSE stream sends the full list (running
-  auctions, current price, bid count, end time) on connect and whenever an auction is created,
-  gets an accepted bid or ends. Same reconnect logic as the auction pages.
+- **Look and feel: "liquid glass".** A clean, iOS-like theme: frosted translucent panels over a
+  soft colour field, system font (SF Pro on Apple devices, Inter elsewhere), iOS blue for
+  actions, iOS red only for errors. All design tokens live in
+  [index.css](packages/web/src/index.css).
+- **Feedback twice: inline and as a toast.** Every result the user should notice (validation
+  errors, bid accepted / too low / outbid in the meantime / auction ended, being outbid while
+  watching, the auction ending, connection lost / back, link copied, a new bid for the seller)
+  shows a toast, *and* stays visible on the page after the toast fades. Toasts for repeatable
+  events carry an id, so a burst of updates shows one toast, not a pile.
+- **User text never breaks the layout.** Titles, descriptions and names wrap anywhere, and grid
+  columns may shrink below their content, so a long unbroken word or pasted URL stays inside its
+  card.
+- **The auction list works like an auction page.** Its own SSE stream (`/api/lobby/events`)
+  sends both lists — running and recently ended auctions, with price, bid count, end time and
+  leader / winner — on connect and whenever an auction is created, gets an accepted bid or ends.
+  Both lists are read at the same server time, so an auction is always in exactly one of them;
+  when it ends, the end timer's push moves it from the top list to the bottom one for everyone.
+  Same reconnect logic as the auction pages.
 
 ## Concurrency and time
 
@@ -117,7 +132,7 @@ for 25 s replaces the connection, because a proxy can keep a dead stream looking
 ## Tests
 
 ```bash
-pnpm test                               # everything (124 tests)
+pnpm test                               # everything (126 tests)
 pnpm --filter @auction/server test      # one package
 ```
 
@@ -126,8 +141,8 @@ pnpm --filter @auction/server test      # one package
 | [shared/test](packages/shared/test) | Money parsing and formatting edge cases; validation rules and messages (price/increment ≤ 0, end time in the past, length limits) |
 | [server/test/domain.test.ts](packages/server/test/domain.test.ts) | Pure rules: end-time boundary, minimum next bid, TOO_LOW vs OUTBID vs AUCTION_ENDED, anti-sniping at 30.001 s / 30 s / 1 ms |
 | [server/test/auctionService.test.ts](packages/server/test/auctionService.test.ts) | Service + real SQLite with a fake clock: main flow, same-moment bids, anti-sniping chains, seller key, persistence across a restart |
-| [server/test/http.test.ts](packages/server/test/http.test.ts) | Real HTTP on a random port: everything below, plus SSE pushes, error codes, heartbeat, the live list (contents, order, pushes on create / bid / end) |
-| [web/test](packages/web/test) | View logic: which snapshot is newer, leading / outbid / won / lost, countdown formatting |
+| [server/test/http.test.ts](packages/server/test/http.test.ts) | Real HTTP on a random port: everything below, plus SSE pushes, error codes, heartbeat, the auction list (live vs. ended split, order, leader / winner, pushes on create / bid, an auction moving to "ended" by itself) |
+| [web/test](packages/web/test) | View logic: which snapshot is newer, leading / outbid / won / lost, when to fire the "you've been outbid" toast, countdown formatting |
 
 The four required scenarios, over real HTTP:
 
@@ -168,14 +183,15 @@ including killing the server for 30 s in the middle of an auction.
   milliseconds). It only affects the display; the server decides.
 - **Dead-connection detection takes up to ~25 s** behind a proxy that hides the disconnect.
 - **The bidder view shows the 10 most recent bids**; the seller view shows all of them, without
-  pagination. The live list shows at most 100 auctions and is not searchable.
-- **The live list is rebuilt on every change.** Any accepted bid anywhere pushes the whole list
+  pagination. The auction list shows at most 100 running and the 20 most recently ended
+  auctions, and is not searchable.
+- **The auction list is rebuilt on every change.** Any accepted bid anywhere pushes the whole list
   to everyone on the list page. Fine at this scale; with many busy auctions I would throttle
   these pushes (e.g. at most one per second) or send per-auction updates.
 - **Migrations are numbered, not named.** A migration that was applied locally and then reverted
   in git leaves the database "ahead" of the code (this happened to me during development; see
   the AI-validation log). A real project would record migration names/checksums and fail loudly.
-- **Optional extras:** the live auctions list is done. Ending early and the outbid sound are
+- **Optional extras:** the list of live auctions is done (with ended auctions below). Ending early and the outbid sound are
   being added as separate commits; see [ROADMAP.md](ROADMAP.md#phase-7--extras-separate-commits-each).
 
 ## AI usage

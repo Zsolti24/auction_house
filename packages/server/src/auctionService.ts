@@ -1,12 +1,13 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   createAuctionInputSchema,
+  ENDED_AUCTIONS_LIMIT,
   formatCents,
   LIVE_AUCTIONS_LIMIT,
   placeBidInputSchema,
   RECENT_BIDS_LIMIT,
+  type AuctionListSnapshot,
   type AuctionSnapshot,
-  type LiveAuctionsSnapshot,
   type Bid,
   type BidRejectionReason,
   type CreateAuctionResponse,
@@ -120,10 +121,17 @@ export class AuctionService {
     return this.repo.liveAuctions(this.clock.now());
   }
 
-  /** Public list of running auctions, ending soonest first. */
-  getLiveAuctions(): LiveAuctionsSnapshot {
+  /**
+   * The lobby: running auctions (ending soonest first) and recently ended ones (most recent
+   * first). Both lists are read at the same `now`, so an auction is always in exactly one.
+   */
+  getAuctionList(): AuctionListSnapshot {
     const now = this.clock.now();
-    return { auctions: this.repo.liveSummaries(now, LIVE_AUCTIONS_LIMIT), serverTime: now };
+    return {
+      live: this.repo.liveSummaries(now, LIVE_AUCTIONS_LIMIT),
+      ended: this.repo.endedSummaries(now, ENDED_AUCTIONS_LIMIT),
+      serverTime: now,
+    };
   }
 
   /** The minimum next bid in the state the bidder saw. Unknown bid id → Infinity (never OUTBID). */

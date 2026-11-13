@@ -42,21 +42,25 @@ export interface SellerSnapshot extends AuctionSnapshot {
   bids: Bid[];
 }
 
-/** One row of the live-auctions list. */
+/** One row of the auction list (lobby). */
 export interface AuctionSummary {
   id: string;
   title: string;
   sellerName: string;
-  /** Highest bid, or the starting price if there are no bids yet. */
+  /** Highest bid, or the starting price if there are no bids yet. Final price once ended. */
   currentPriceCents: number;
   bidCount: number;
   endsAt: number;
+  /** Display name of the highest bidder: the leader while live, the winner once ended. */
+  leaderName: string | null;
 }
 
-/** The live-auctions list; sent on GET and as every message of its SSE stream (full list). */
-export interface LiveAuctionsSnapshot {
-  /** Auctions that are still running, the ones ending soonest first. */
-  auctions: AuctionSummary[];
+/** The auction list; sent on GET and as every message of its SSE stream (full lists, never diffs). */
+export interface AuctionListSnapshot {
+  /** Auctions still running, the ones ending soonest first. */
+  live: AuctionSummary[];
+  /** Auctions that have ended, the most recently ended first. */
+  ended: AuctionSummary[];
   serverTime: number;
 }
 

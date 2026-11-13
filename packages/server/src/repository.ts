@@ -22,6 +22,20 @@ const BID_COLUMNS = `
   id, bidder_id AS bidderId, bidder_name AS bidderName,
   amount_cents AS amountCents, created_at AS createdAt`;
 
+/**
+ * One row per auction for the lobby lists. Every accepted bid beats the previous one, so
+ * MAX(amount) is the leading (or winning) bid, and its bidder is the leader (or winner).
+ * "Ended" is decided by the caller's WHERE on ends_at vs. now, like everywhere else.
+ */
+const SUMMARY_SELECT = `
+  SELECT a.id, a.title, a.seller_name AS sellerName, a.ends_at AS endsAt,
+         COALESCE(MAX(b.amount_cents), a.starting_price_cents) AS currentPriceCents,
+         COUNT(b.seq) AS bidCount,
+         (SELECT lb.bidder_name FROM bids lb WHERE lb.auction_id = a.id
+          ORDER BY lb.amount_cents DESC, lb.seq DESC LIMIT 1) AS leaderName
+  FROM auctions a
+  LEFT JOIN bids b ON b.auction_id = a.id`;
+
 /** Thin data access layer: prepared statements only, no business rules. */
 export class AuctionRepository {
   private readonly stmts;
@@ -38,17 +52,12 @@ export class AuctionRepository {
       liveAuctions: db.prepare<[number], AuctionRow>(
         `SELECT ${AUCTION_COLUMNS} FROM auctions WHERE ends_at > ? ORDER BY ends_at`,
       ),
-      // Every accepted bid beats the previous one, so MAX(amount) is the leading bid.
-      liveSummaries: db.prepare<[number, number], AuctionSummary>(`
-        SELECT a.id, a.title, a.seller_name AS sellerName, a.ends_at AS endsAt,
-               COALESCE(MAX(b.amount_cents), a.starting_price_cents) AS currentPriceCents,
-               COUNT(b.seq) AS bidCount
-        FROM auctions a
-        LEFT JOIN bids b ON b.auction_id = a.id
-        WHERE a.ends_at > ?
-        GROUP BY a.id
-        ORDER BY a.ends_at, a.id
-        LIMIT ?`),
+      liveSummaries: db.prepare<[number, number], AuctionSummary>(
+        `${SUMMARY_SELECT} WHERE a.ends_at > ? GROUP BY a.id ORDER BY a.ends_at, a.id LIMIT ?`,
+      ),
+      endedSummaries: db.prepare<[number, number], AuctionSummary>(
+        `${SUMMARY_SELECT} WHERE a.ends_at <= ? GROUP BY a.id ORDER BY a.ends_at DESC, a.id LIMIT ?`,
+      ),
 
       insertBid: db.prepare<Bid & { auctionId: string }>(`
         INSERT INTO bids (id, auction_id, bidder_id, bidder_name, amount_cents, created_at)
@@ -82,6 +91,10 @@ export class AuctionRepository {
 
   liveSummaries(now: number, limit: number): AuctionSummary[] {
     return this.stmts.liveSummaries.all(now, limit);
+  }
+
+  endedSummaries(now: number, limit: number): AuctionSummary[] {
+    return this.stmts.endedSummaries.all(now, limit);
   }
 
   insertBid(auctionId: string, bid: Bid): void {
