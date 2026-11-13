@@ -56,6 +56,13 @@ export const placeBidInputSchema = z.object({
 
 export type PlaceBidInput = z.infer<typeof placeBidInputSchema>;
 
+/** End an auction early. The seller key proves it is the seller asking. */
+export const endEarlyInputSchema = z.object({
+  sellerKey: z.string({ error: "Seller key is required" }).min(1, "Seller key is required"),
+});
+
+export type EndEarlyInput = z.infer<typeof endEarlyInputSchema>;
+
 /** Flattens a zod error into `{ field: [messages] }` for ApiError.fieldErrors and form display. */
 export function toFieldErrors(error: z.ZodError): Record<string, string[]> {
   const result: Record<string, string[]> = {};

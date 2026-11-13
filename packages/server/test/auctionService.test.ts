@@ -239,6 +239,51 @@ describe("AuctionService", () => {
     });
   });
 
+  describe("ending early", () => {
+    it("the seller can end an auction with no bids; it is ended right away and later bids are rejected", () => {
+      const { service, clock } = ctx;
+      const { id, sellerKey } = service.createAuction(auctionInput());
+      clock.advance(60_000);
+
+      const ended = service.endAuctionEarly(id, { sellerKey });
+      expect(ended).toMatchObject({ status: "ended", endedEarly: true, endsAt: T0 + 60_000, highestBid: null, bids: [] });
+      expect(service.getSnapshot(id)).toMatchObject({ status: "ended", endedEarly: true });
+      expect(service.liveAuctions()).toEqual([]);
+
+      const late = rejected(service.placeBid(id, { ...bidder("Late"), amountCents: 10_000, expectedLeadingBidId: null }));
+      expect(late.reason).toBe("AUCTION_ENDED");
+    });
+
+    it("is refused once there is a bid, and the auction keeps running", () => {
+      const { service } = ctx;
+      const { id, sellerKey } = service.createAuction(auctionInput());
+      accepted(service.placeBid(id, { ...bidder("Anna"), amountCents: 10_000, expectedLeadingBidId: null }));
+
+      const err = expectHttpError(() => service.endAuctionEarly(id, { sellerKey }), 409);
+      expect(err.body.message).toBe("The auction already has bids, so it can no longer be ended early.");
+      expect(service.getSnapshot(id)).toMatchObject({ status: "live", endedEarly: false, bidCount: 1 });
+    });
+
+    it("is refused after the auction has already ended", () => {
+      const { service, clock } = ctx;
+      const { id, sellerKey } = service.createAuction(auctionInput());
+      clock.set(T0 + 10 * 60_000);
+      expect(expectHttpError(() => service.endAuctionEarly(id, { sellerKey }), 409).body.message).toBe(
+        "The auction has already ended.",
+      );
+      expect(service.getSnapshot(id).endedEarly).toBe(false); // ended normally
+    });
+
+    it("needs the seller key", () => {
+      const { service } = ctx;
+      const { id } = service.createAuction(auctionInput());
+      expectHttpError(() => service.endAuctionEarly(id, { sellerKey: "wrong" }), 403);
+      expectHttpError(() => service.endAuctionEarly(id, {}), 400);
+      expectHttpError(() => service.endAuctionEarly("nope", { sellerKey: "x" }), 404);
+      expect(service.getSnapshot(id).status).toBe("live");
+    });
+  });
+
   describe("seller view", () => {
     it("requires the seller key and shows every bid, newest first", () => {
       const { service } = ctx;
@@ -289,6 +334,20 @@ describe("persistence across restarts", () => {
     clock.set(END + 20_000);
     expect(second.service.getSnapshot(id)).toMatchObject({ status: "ended", highestBid: { bidderName: "Bob" } });
     expect(second.service.liveAuctions()).toEqual([]);
+    second.db.close();
+  });
+
+  it("an auction ended early stays ended early after a restart", () => {
+    const dbPath = join(dir, "auction.db");
+    const clock = new FakeClock();
+    const first = makeService(dbPath, clock);
+    const { id, sellerKey } = first.service.createAuction(auctionInput());
+    first.service.endAuctionEarly(id, { sellerKey });
+    first.db.close();
+
+    const second = makeService(dbPath, clock);
+    expect(second.service.getSnapshot(id)).toMatchObject({ status: "ended", endedEarly: true });
+    expect(second.service.getAuctionList().ended).toMatchObject([{ id, endedEarly: true }]);
     second.db.close();
   });
 

@@ -139,7 +139,7 @@ function EndedCard({ auction }: { auction: AuctionSummary }) {
             <span className="font-semibold tabular-nums">{formatCents(auction.currentPriceCents)}</span>
           </>
         ) : (
-          <span className="text-muted">Ended without bids</span>
+          <span className="text-muted">{auction.endedEarly ? "Ended early by the seller" : "Ended without bids"}</span>
         )}
       </p>
       <p className="mt-1 text-xs text-muted">

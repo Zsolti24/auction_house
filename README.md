@@ -41,7 +41,7 @@ packages/
 | `/auctions` | Auction list, updating in real time: running auctions on top (ending soonest first, with the current leader), ended ones below (most recent first, with the result) |
 | `/create` | Create an auction (the seller's display name is stored with it) |
 | `/a/:id` | Bidder page (asks for a name inline if you came straight from a shared link) |
-| `/a/:id/seller?key=…` | Seller page: share links, every bid live, result |
+| `/a/:id/seller?key=…` | Seller page: share links, every bid live, result, **End auction now** (only before the first bid, with a confirm step) |
 
 ```
  browser ──POST /bids──────────────▶ Fastify route ─▶ AuctionService.placeBid
@@ -112,6 +112,13 @@ after the other, the second one against the state the first one created. They ca
 accepted as the highest bid. The pure rules live in [domain.ts](packages/server/src/domain.ts),
 with no I/O, so they are easy to test.
 
+**Ending early** (seller, only before the first bid) uses the same single transaction: check the
+seller key, check there are no bids and the auction is still running, then move `endsAt` to
+"now" and mark it as ended early. So if a bid and an end-early arrive together, exactly one
+wins: bid first → ending is refused with 409; ending first → the bid gets `AUCTION_ENDED`.
+Because "ended" is still derived from `endsAt`, nothing else (timers, lists, restarts) needed to
+change.
+
 **Rejection reasons.** With every bid the client sends the id of the leading bid it saw.
 If the bid is too low now, but would have been enough for what the bidder saw and someone else
 has bid since, the reason is `OUTBID` ("someone else bid in the meantime"). Otherwise it is
@@ -140,7 +147,7 @@ for 25 s replaces the connection, because a proxy can keep a dead stream looking
 ## Tests
 
 ```bash
-pnpm test                               # everything (126 tests)
+pnpm test                               # everything (134 tests)
 pnpm --filter @auction/server test      # one package
 ```
 
@@ -165,8 +172,11 @@ The four required scenarios, over real HTTP:
 
 Other risky behaviour that is tested: a server restart in the middle of an auction (same state
 and winner, and the "ended" push still arrives), a bid exactly at `endsAt`, a rejected late bid
-not extending the auction, the seller key not being stored in plain text, and upgrading a
-database created before seller names existed.
+not extending the auction, the seller key not being stored in plain text, upgrading a
+database created before seller names existed, and ending early: allowed only without bids, needs
+the seller key, survives a restart, is pushed to bidders / seller / list, and a bid racing an
+end-early never lets both succeed (the test alternates which request is sent first and checks
+that both outcomes actually occurred).
 
 How I checked the tests themselves: I broke three rules on purpose (bids allowed at the exact
 end, anti-sniping disabled, `OUTBID` never reported), and each change made 3–6 tests fail. I also
@@ -199,9 +209,8 @@ including killing the server for 30 s in the middle of an auction.
 - **Migrations are numbered, not named.** A migration that was applied locally and then reverted
   in git leaves the database "ahead" of the code (this happened to me during development; see
   the AI-validation log). A real project would record migration names/checksums and fail loudly.
-- **Optional extras:** the list of live auctions (with ended auctions below) and the outbid
-  sound + visual cue are done. Ending early is not done yet; see
-  [ROADMAP.md](ROADMAP.md#phase-7--extras-separate-commits-each).
+- **Optional extras:** all three are done — ending early (before the first bid), the list of
+  live auctions (with ended auctions below), and the outbid sound + visual cue.
 - **The outbid cue is checked by hand, not by a test.** I verified it in the browser by counting
   the generated tones and animations (and with sound muted), but there is no automated
   browser test for it; only the "was I just outbid?" decision is unit-tested.

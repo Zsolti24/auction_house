@@ -189,6 +189,66 @@ describe("HTTP API", () => {
     });
   });
 
+  describe("ending early", () => {
+    it("bidders, the seller and the auction list are all told right away", async () => {
+      const { id, sellerKey } = await createAuction();
+      const bidderStream = await server.stream<AuctionSnapshot>(`/api/auctions/${id}/events`);
+      const sellerStream = await server.stream<SellerSnapshot>(`/api/auctions/${id}/seller/events?key=${sellerKey}`);
+      const lobby = await server.stream<AuctionListSnapshot>("/api/lobby/events");
+      await bidderStream.next();
+      await sellerStream.next();
+      expect((await lobby.next()).live.map((a) => a.id)).toEqual([id]);
+
+      clock.advance(30_000);
+      const res = await server.post<SellerSnapshot>(`/api/auctions/${id}/end`, { sellerKey });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ status: "ended", endedEarly: true, endsAt: T0 + 30_000 });
+
+      expect(await bidderStream.next()).toMatchObject({ status: "ended", endedEarly: true, highestBid: null });
+      expect(await sellerStream.next()).toMatchObject({ status: "ended", endedEarly: true });
+      expect(await lobby.next()).toMatchObject({ live: [], ended: [{ id, endedEarly: true, leaderName: null }] });
+      for (const s of [bidderStream, sellerStream, lobby]) s.close();
+    });
+
+    it("is refused with 409 once there is a bid, and 403 without the right key", async () => {
+      const { id, sellerKey } = await createAuction();
+      expect((await server.post(`/api/auctions/${id}/end`, { sellerKey: "wrong" })).status).toBe(403);
+      await placeBid(id, { ...bidder("Anna"), amountCents: 10_000, expectedLeadingBidId: null });
+
+      const res = await server.post(`/api/auctions/${id}/end`, { sellerKey });
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ error: "CONFLICT" });
+      expect((await server.get<AuctionSnapshot>(`/api/auctions/${id}`)).body).toMatchObject({ status: "live", bidCount: 1 });
+    });
+
+    it("a bid and an end-early arriving at the same moment: exactly one of them wins", async () => {
+      // The server handles requests in arrival order, so which one is sent first decides the
+      // winner. Alternate the order so both outcomes are exercised — and check they both were.
+      const outcomes = new Set<string>();
+      for (let round = 0; round < 10; round++) {
+        const { id, sellerKey } = await createAuction();
+        const sendBid = () => placeBid(id, { ...bidder("Anna"), amountCents: 10_000, expectedLeadingBidId: null });
+        const sendEnd = () => server.post(`/api/auctions/${id}/end`, { sellerKey });
+        const [bid, end] =
+          round % 2 === 0
+            ? await Promise.all([sendBid(), sendEnd()])
+            : await Promise.all([sendEnd(), sendBid()]).then(([e, b]) => [b, e] as const);
+        const final = (await server.get<AuctionSnapshot>(`/api/auctions/${id}`)).body;
+        outcomes.add(bid.status === 201 ? "bid won" : "end won");
+
+        if (bid.status === 201) {
+          expect(end.status).toBe(409); // the bid came first: no longer allowed to end early
+          expect(final).toMatchObject({ status: "live", bidCount: 1, endedEarly: false });
+        } else {
+          expect(end.status).toBe(200); // ending came first: the bid is too late
+          expect(bid.body).toMatchObject({ accepted: false, reason: "AUCTION_ENDED" });
+          expect(final).toMatchObject({ status: "ended", bidCount: 0, endedEarly: true });
+        }
+      }
+      expect(outcomes).toEqual(new Set(["bid won", "end won"]));
+    });
+  });
+
   describe("auction list (lobby)", () => {
     it("lists running auctions soonest end first, and ended ones most recent first, with leader / winner", async () => {
       const later = await createAuction({ title: "Later", endsAt: T0 + 20 * 60_000 });
@@ -205,9 +265,9 @@ describe("HTTP API", () => {
       expect(status).toBe(200);
       expect(body.ended).toEqual([]);
       expect(body.live).toEqual([
-        { id: soonest.id, title: "Soonest", sellerName: "Sam", currentPriceCents: 10_000, bidCount: 0, endsAt: T0 + 2 * 60_000, leaderName: null },
-        { id: sooner.id, title: "Sooner", sellerName: "Sue", currentPriceCents: 10_000, bidCount: 0, endsAt: T0 + 5 * 60_000, leaderName: null },
-        { id: later.id, title: "Later", sellerName: "Sam", currentPriceCents: 13_000, bidCount: 2, endsAt: T0 + 20 * 60_000, leaderName: "Bob" },
+        { id: soonest.id, title: "Soonest", sellerName: "Sam", currentPriceCents: 10_000, bidCount: 0, endsAt: T0 + 2 * 60_000, leaderName: null, endedEarly: false },
+        { id: sooner.id, title: "Sooner", sellerName: "Sue", currentPriceCents: 10_000, bidCount: 0, endsAt: T0 + 5 * 60_000, leaderName: null, endedEarly: false },
+        { id: later.id, title: "Later", sellerName: "Sam", currentPriceCents: 13_000, bidCount: 2, endsAt: T0 + 20 * 60_000, leaderName: "Bob", endedEarly: false },
       ]);
 
       clock.set(T0 + 5 * 60_000); // "Soonest" and "Sooner" have ended (exactly at endsAt counts as ended)

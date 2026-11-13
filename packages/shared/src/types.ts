@@ -23,9 +23,11 @@ export interface AuctionSnapshot {
   startingPriceCents: number;
   minIncrementCents: number;
   createdAt: number;
-  /** Current end time; moves forward on anti-sniping extensions. */
+  /** Current end time; moves forward on anti-sniping extensions, or to "now" if ended early. */
   endsAt: number;
   status: AuctionStatus;
+  /** The seller ended the auction before its planned end (only possible before the first bid). */
+  endedEarly: boolean;
   /** Leading bid while live; the winning bid once ended. Null if nobody has bid. */
   highestBid: Bid | null;
   /** Smallest amount the server would accept right now. Computed by the server only. */
@@ -53,6 +55,8 @@ export interface AuctionSummary {
   endsAt: number;
   /** Display name of the highest bidder: the leader while live, the winner once ended. */
   leaderName: string | null;
+  /** Ended early by the seller. */
+  endedEarly: boolean;
 }
 
 /** The auction list; sent on GET and as every message of its SSE stream (full lists, never diffs). */

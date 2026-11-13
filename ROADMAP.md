@@ -56,7 +56,7 @@ the state from `now`.
 | `POST /api/auctions/:id/bids` | `{ bidderId, bidderName, amountCents, expectedLeadingBidId }` |
 | `GET /api/auctions/:id/events` | SSE: full snapshot on connect and after every change |
 | `GET /api/auctions/:id/seller?key=…` | Seller view with all bids |
-| `POST /api/auctions/:id/close` | *Extra*: end early (only before the first bid) |
+| `POST /api/auctions/:id/end` | *Extra*: end early, body `{ sellerKey }` — 200 seller snapshot, 409 if it has bids / already ended, 403 wrong key |
 | `GET /api/lobby` | *Extra*: auction list — `live` (soonest end first) and `ended` (most recent first, max 20), each with leader / winner |
 | `GET /api/lobby/events` | *Extra*: SSE, both lists on connect and on every create / accepted bid / end |
 
@@ -138,7 +138,10 @@ server state; reconnect = fresh state.
       chime, orange flash + shake of the live panel (no shake with reduced motion), "⚠ Outbid!"
       tab title while the tab is in the background, mute toggle remembered in localStorage.
       Verified in the browser by counting tones/animations, muted and unmuted.
-- [ ] Seller can end early, only before the first bid (+ test)
+- [x] Seller can end early, only before the first bid: migration 3 (`ended_early`), same single
+      transaction as bids (`ends_at` moved to now), `POST /api/auctions/:id/end`, confirm step on
+      the seller page, "Ended early by the seller" on bidder page / result / list, toasts (+ tests,
+      incl. a bid racing an end-early)
 
 ## AI-validation log
 
@@ -194,3 +197,8 @@ output was wrong or weak, how it was caught and what changed.
   on top of the header instead of glassy and below it. The toast library loads its own styles
   after ours and overrode the settings. Spotted on the screenshot, fixed by applying the
   settings where the library can't override them.
+- **A race test that only tested half the race (end early).** The agent wrote a test where a bid
+  and "end auction" arrive at the same time, with checks for both possible winners. It passed —
+  but I was suspicious and counted: in 30 out of 30 runs the bid won, because it was always sent
+  first. So the "ending wins" half was never actually checked. Changed the test to alternate
+  which request goes first, and to fail unless both outcomes really happened.

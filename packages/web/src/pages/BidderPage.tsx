@@ -144,6 +144,7 @@ function useLiveEventToasts(
       const standing = bidderStanding(snapshot, myId, participated);
       const id = `ended-${snapshot.id}`;
       if (standing === "won") notify.success(`You won! ${formatCents(winner!.amountCents)} is yours.`, id);
+      else if (snapshot.endedEarly) notify.info("The seller ended the auction early.", id);
       else if (!winner) notify.info("The auction ended without bids.", id);
       else if (standing === "lost") notify.info(`Auction ended — ${winner.bidderName} won.`, id);
       else notify.info(`Auction ended — sold to ${winner.bidderName}.`, id);

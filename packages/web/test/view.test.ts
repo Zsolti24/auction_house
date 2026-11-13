@@ -24,6 +24,7 @@ function snapshot(overrides: Partial<AuctionSnapshot> = {}): AuctionSnapshot {
     createdAt: 0,
     endsAt: 100_000,
     status: "live",
+    endedEarly: false,
     highestBid: null,
     minNextBidCents: 1000,
     bidCount: 0,

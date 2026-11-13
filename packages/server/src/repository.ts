@@ -11,12 +11,17 @@ export interface AuctionRow {
   minIncrementCents: number;
   createdAt: number;
   endsAt: number;
+  endedEarly: boolean;
 }
+
+/** SQLite has no boolean type: flags are stored as 0 / 1 and converted here. */
+type Stored<T> = Omit<T, "endedEarly"> & { endedEarly: number };
+const withFlag = <T extends { endedEarly: boolean }>(row: Stored<T>): T => ({ ...row, endedEarly: row.endedEarly === 1 }) as T;
 
 const AUCTION_COLUMNS = `
   id, seller_key_hash AS sellerKeyHash, seller_name AS sellerName, title, description,
   starting_price_cents AS startingPriceCents, min_increment_cents AS minIncrementCents,
-  created_at AS createdAt, ends_at AS endsAt`;
+  created_at AS createdAt, ends_at AS endsAt, ended_early AS endedEarly`;
 
 const BID_COLUMNS = `
   id, bidder_id AS bidderId, bidder_name AS bidderName,
@@ -28,7 +33,7 @@ const BID_COLUMNS = `
  * "Ended" is decided by the caller's WHERE on ends_at vs. now, like everywhere else.
  */
 const SUMMARY_SELECT = `
-  SELECT a.id, a.title, a.seller_name AS sellerName, a.ends_at AS endsAt,
+  SELECT a.id, a.title, a.seller_name AS sellerName, a.ends_at AS endsAt, a.ended_early AS endedEarly,
          COALESCE(MAX(b.amount_cents), a.starting_price_cents) AS currentPriceCents,
          COUNT(b.seq) AS bidCount,
          (SELECT lb.bidder_name FROM bids lb WHERE lb.auction_id = a.id
@@ -42,20 +47,21 @@ export class AuctionRepository {
 
   constructor(db: Db) {
     this.stmts = {
-      insertAuction: db.prepare<AuctionRow>(`
+      insertAuction: db.prepare<Omit<AuctionRow, "endedEarly">>(`
         INSERT INTO auctions (id, seller_key_hash, seller_name, title, description, starting_price_cents,
                               min_increment_cents, created_at, ends_at)
         VALUES (@id, @sellerKeyHash, @sellerName, @title, @description, @startingPriceCents,
                 @minIncrementCents, @createdAt, @endsAt)`),
-      getAuction: db.prepare<[string], AuctionRow>(`SELECT ${AUCTION_COLUMNS} FROM auctions WHERE id = ?`),
+      getAuction: db.prepare<[string], Stored<AuctionRow>>(`SELECT ${AUCTION_COLUMNS} FROM auctions WHERE id = ?`),
       updateEndsAt: db.prepare<[number, string]>(`UPDATE auctions SET ends_at = ? WHERE id = ?`),
-      liveAuctions: db.prepare<[number], AuctionRow>(
+      endEarly: db.prepare<[number, string]>(`UPDATE auctions SET ends_at = ?, ended_early = 1 WHERE id = ?`),
+      liveAuctions: db.prepare<[number], Stored<AuctionRow>>(
         `SELECT ${AUCTION_COLUMNS} FROM auctions WHERE ends_at > ? ORDER BY ends_at`,
       ),
-      liveSummaries: db.prepare<[number, number], AuctionSummary>(
+      liveSummaries: db.prepare<[number, number], Stored<AuctionSummary>>(
         `${SUMMARY_SELECT} WHERE a.ends_at > ? GROUP BY a.id ORDER BY a.ends_at, a.id LIMIT ?`,
       ),
-      endedSummaries: db.prepare<[number, number], AuctionSummary>(
+      endedSummaries: db.prepare<[number, number], Stored<AuctionSummary>>(
         `${SUMMARY_SELECT} WHERE a.ends_at <= ? GROUP BY a.id ORDER BY a.ends_at DESC, a.id LIMIT ?`,
       ),
 
@@ -73,28 +79,34 @@ export class AuctionRepository {
     };
   }
 
-  insertAuction(row: AuctionRow): void {
+  insertAuction(row: Omit<AuctionRow, "endedEarly">): void {
     this.stmts.insertAuction.run(row);
   }
 
   getAuction(id: string): AuctionRow | undefined {
-    return this.stmts.getAuction.get(id);
+    const row = this.stmts.getAuction.get(id);
+    return row && withFlag<AuctionRow>(row);
   }
 
   updateEndsAt(id: string, endsAt: number): void {
     this.stmts.updateEndsAt.run(endsAt, id);
   }
 
+  /** Ends the auction at `now`: moves ends_at there and records why. */
+  endEarly(id: string, now: number): void {
+    this.stmts.endEarly.run(now, id);
+  }
+
   liveAuctions(now: number): AuctionRow[] {
-    return this.stmts.liveAuctions.all(now);
+    return this.stmts.liveAuctions.all(now).map((r) => withFlag<AuctionRow>(r));
   }
 
   liveSummaries(now: number, limit: number): AuctionSummary[] {
-    return this.stmts.liveSummaries.all(now, limit);
+    return this.stmts.liveSummaries.all(now, limit).map((r) => withFlag<AuctionSummary>(r));
   }
 
   endedSummaries(now: number, limit: number): AuctionSummary[] {
-    return this.stmts.endedSummaries.all(now, limit);
+    return this.stmts.endedSummaries.all(now, limit).map((r) => withFlag<AuctionSummary>(r));
   }
 
   insertBid(auctionId: string, bid: Bid): void {

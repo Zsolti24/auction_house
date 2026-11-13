@@ -1,4 +1,11 @@
-import type { ApiError, CreateAuctionInput, CreateAuctionResponse, PlaceBidInput, PlaceBidResponse } from "@auction/shared";
+import type {
+  ApiError,
+  CreateAuctionInput,
+  CreateAuctionResponse,
+  PlaceBidInput,
+  PlaceBidResponse,
+  SellerSnapshot,
+} from "@auction/shared";
 
 /** Non-2xx response (other than a 409 bid rejection), or the server could not be reached. */
 export class ApiRequestError extends Error {
@@ -38,6 +45,13 @@ export async function placeBid(auctionId: string, input: PlaceBidInput): Promise
   const res = await postJson(`/api/auctions/${encodeURIComponent(auctionId)}/bids`, input);
   if (res.status !== 201 && res.status !== 409) throw await errorFrom(res);
   return (await res.json()) as PlaceBidResponse;
+}
+
+/** Seller ends the auction now. Rejected with 409 (has bids / already ended) or 403 (wrong key). */
+export async function endAuctionEarly(auctionId: string, sellerKey: string): Promise<SellerSnapshot> {
+  const res = await postJson(`/api/auctions/${encodeURIComponent(auctionId)}/end`, { sellerKey });
+  if (res.status !== 200) throw await errorFrom(res);
+  return (await res.json()) as SellerSnapshot;
 }
 
 /** Used when a stream fails to open, to tell "not found" / "forbidden" apart from "offline". */

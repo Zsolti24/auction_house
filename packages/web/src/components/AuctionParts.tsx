@@ -69,8 +69,11 @@ export function Countdown({ snapshot, serverNow }: { snapshot: AuctionSnapshot; 
     return (
       <div className="glass-control rounded-2xl px-4 py-3">
         <Eyebrow>Auction</Eyebrow>
-        <p className="text-2xl font-bold tracking-tight">Ended</p>
-        <p className="text-sm text-muted">at {formatClockTime(snapshot.endsAt)}</p>
+        <p className="text-2xl font-bold tracking-tight">{snapshot.endedEarly ? "Ended early" : "Ended"}</p>
+        <p className="text-sm text-muted">
+          {snapshot.endedEarly ? "by the seller at " : "at "}
+          {formatClockTime(snapshot.endsAt)}
+        </p>
       </div>
     );
   }
@@ -147,6 +150,7 @@ export function ResultBanner({ snapshot, personal }: { snapshot: AuctionSnapshot
       <p className={cx("font-bold tracking-tight", personal ? "mt-1 text-lg text-ink/80" : "text-3xl")}>
         {winner ? `Sold to ${winner.bidderName} for ${formatCents(winner.amountCents)}` : "Ended without bids"}
       </p>
+      {snapshot.endedEarly && <p className="mt-1 text-sm text-muted">The seller ended the auction early.</p>}
     </div>
   );
 }

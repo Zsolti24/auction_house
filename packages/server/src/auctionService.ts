@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypt
 import {
   createAuctionInputSchema,
   ENDED_AUCTIONS_LIMIT,
+  endEarlyInputSchema,
   formatCents,
   LIVE_AUCTIONS_LIMIT,
   placeBidInputSchema,
@@ -17,10 +18,17 @@ import {
 import type { Clock } from "./clock";
 import type { Db } from "./db";
 import { deriveStatus, evaluateBid, minNextBid } from "./domain";
-import { forbidden, notFound, validationError } from "./errors";
+import { conflict, forbidden, notFound, validationError } from "./errors";
 import { AuctionRepository, type AuctionRow } from "./repository";
 
 const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
+
+/** Only the hash is stored; compare hashes in constant time. Throws 403 on mismatch. */
+function assertSeller(auction: AuctionRow, sellerKey: string): void {
+  const given = Buffer.from(hashKey(sellerKey));
+  const expected = Buffer.from(auction.sellerKeyHash);
+  if (!timingSafeEqual(given, expected)) throw forbidden();
+}
 
 export class AuctionService {
   private readonly repo: AuctionRepository;
@@ -53,10 +61,37 @@ export class AuctionService {
   getSellerSnapshot(auctionId: string, sellerKey: string): SellerSnapshot {
     const auction = this.repo.getAuction(auctionId);
     if (!auction) throw notFound();
-    const given = Buffer.from(hashKey(sellerKey));
-    const expected = Buffer.from(auction.sellerKeyHash);
-    if (!timingSafeEqual(given, expected)) throw forbidden();
+    assertSeller(auction, sellerKey);
     return { ...this.buildSnapshot(auction, this.clock.now()), bids: this.repo.bids(auctionId) };
+  }
+
+  /**
+   * The seller ends the auction now — allowed only while it is running and has no bids.
+   * Same single transaction as placeBid, so an end-early and a bid arriving together are decided
+   * one after the other: if the bid wins, ending is refused (409); if ending wins, the bid gets
+   * AUCTION_ENDED, because ends_at is now in the past for it.
+   */
+  endAuctionEarly(auctionId: string, body: unknown): SellerSnapshot {
+    const parsed = endEarlyInputSchema.safeParse(body);
+    if (!parsed.success) throw validationError(parsed.error);
+
+    const run = this.db.transaction((): SellerSnapshot => {
+      const auction = this.repo.getAuction(auctionId);
+      if (!auction) throw notFound();
+      assertSeller(auction, parsed.data.sellerKey);
+
+      const now = this.clock.now();
+      if (deriveStatus(auction.endsAt, now) === "ended") throw conflict("The auction has already ended.");
+      if (this.repo.countBids(auctionId) > 0) {
+        throw conflict("The auction already has bids, so it can no longer be ended early.");
+      }
+
+      this.repo.endEarly(auctionId, now);
+      const ended = { ...auction, endsAt: now, endedEarly: true };
+      return { ...this.buildSnapshot(ended, now), bids: [] };
+    });
+
+    return run.immediate();
   }
 
   /**
@@ -153,6 +188,7 @@ export class AuctionService {
       createdAt: auction.createdAt,
       endsAt: auction.endsAt,
       status: deriveStatus(auction.endsAt, now),
+      endedEarly: auction.endedEarly,
       highestBid,
       minNextBidCents: minNextBid(auction.startingPriceCents, auction.minIncrementCents, highestBid?.amountCents ?? null),
       bidCount: this.repo.countBids(auction.id),

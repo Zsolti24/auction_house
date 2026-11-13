@@ -17,7 +17,10 @@ export const notFound = (what = "Auction") =>
 export const forbidden = () =>
   new HttpError(403, { error: "FORBIDDEN", message: "Invalid seller key" });
 
-export const validationError = (error: ZodError) =>
+/** The request is valid but conflicts with the auction's current state (e.g. ending after a bid). */
+export const conflict = (message: string) => new HttpError(409, { error: "CONFLICT", message });
+
+export const validationError =(error: ZodError) =>
   new HttpError(400, {
     error: "VALIDATION_ERROR",
     message: "Some fields are invalid",

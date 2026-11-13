@@ -102,6 +102,15 @@ export function buildApp({ dbPath, clock = systemClock, sseHeartbeatMs = 10_000 
     return reply.status(201).send(result);
   });
 
+  /** Seller ends the auction now: 200 with the seller snapshot, or 409 if it has bids / has ended. */
+  app.post<IdParams>("/api/auctions/:id/end", async (request) => {
+    const { id } = request.params;
+    const ended = service.endAuctionEarly(id, request.body);
+    timers.cancel(id); // nothing left to announce at the old end time
+    hub.publish(id); // bidders, seller and the auction list see "ended" right away
+    return ended;
+  });
+
   app.get<IdParams>("/api/auctions/:id/events", (request, reply) => {
     const { id } = request.params;
     const initial = service.getSnapshot(id); // throws 404 before the stream is opened

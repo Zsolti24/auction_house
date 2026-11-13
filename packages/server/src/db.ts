@@ -38,6 +38,11 @@ const MIGRATIONS: string[] = [
   ALTER TABLE auctions ADD COLUMN seller_name TEXT NOT NULL DEFAULT '';
   CREATE INDEX auctions_by_end ON auctions (ends_at);
   `,
+  // 3: seller can end an auction early (before the first bid). ends_at is moved to that moment,
+  // so "ended" stays derived from ends_at everywhere; this flag only says why it ended.
+  `
+  ALTER TABLE auctions ADD COLUMN ended_early INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** Opens (and creates/migrates if needed) a database. Use ":memory:" for tests. */
