@@ -9,8 +9,12 @@ The step-by-step plan, every design decision and the progress checklist are in [
 
 ## Running it
 
-Requirements: Node.js ≥ 20 and pnpm (the exact version is pinned in `package.json`; run
-`corepack enable` once and corepack will use it).
+Requirements:
+
+- **Node.js 22.12+ or 24+** (developed on Node 24; `.nvmrc` says 24). Odd-numbered versions
+  23 and 25 are not supported by the test runner (Vitest 5), and `better-sqlite3` needs Node 22+.
+- **pnpm**: the exact version is pinned in `package.json`; run `corepack enable` once and
+  corepack will use it.
 
 ```bash
 pnpm install     # install all packages
@@ -108,6 +112,21 @@ Key decisions (more detail and alternatives in [ROADMAP.md](ROADMAP.md#decisions
 
 **The server decides.** The client never decides whether a bid is valid or whether the auction
 is over. It only displays what the server sends.
+
+**Bidding rules**, as implemented in [domain.ts](packages/server/src/domain.ts):
+
+- **First bid: at least the starting price.** The task says a bid must beat "the current highest
+  bid" by the minimum increment. Before anyone has bid there is no highest bid, so I treat the
+  starting price as the opening bid itself: a first bid of exactly €100.00 on a €100.00 auction
+  is accepted. This is how real auctions open, and it means a seller who sets €100.00 can sell for
+  €100.00. (The other reading, starting price + increment, would be a one-line change in
+  `minNextBid`.)
+- **Every later bid: at least highest bid + minimum increment.** With €5.00 steps, after €100.00
+  the next valid bid is €105.00; €104.99 is "too low".
+- **The leader may raise their own bid.** Nothing in the task forbids it.
+- **A bid at exactly the end time is too late.** The auction is over from the millisecond
+  `now >= endsAt`.
+- **Amounts** are 1 cent to €1,000,000,000.00, in whole cents.
 
 **One bid = one synchronous transaction** (`BEGIN IMMEDIATE`): read the current leader and end
 time, read the clock, decide, insert the bid, extend the end time if needed. `better-sqlite3`
@@ -249,13 +268,17 @@ including killing the server for 30 s in the middle of an auction.
 
 **Agent setup**
 
-- [CLAUDE.md](CLAUDE.md): project rules for the agent. The server decides; money in cents; time
-  only through the injected `Clock`; no `await` inside the bid transaction; full snapshots over
-  SSE; tests written together with the logic; small conventional commits.
+- [CLAUDE.md](CLAUDE.md): project rules for the agent. The core rules: the server decides; money
+  in cents; time only through the injected `Clock`; one synchronous transaction per bid /
+  end-early, no `await` inside; full snapshots over SSE; append-only migrations. It also holds
+  working agreements I added as the project went on, each one after the agent got something
+  wrong: I commit, the agent only suggests messages; check that every branch of a race test
+  actually ran; check UI changes in a real browser at desktop and phone width; stop dev servers
+  by process, not by port; log every agent mistake in the validation log.
 - [ROADMAP.md](ROADMAP.md): the plan we agreed on before coding. The agent works phase by phase,
   ticks items off, and keeps an AI-validation log there.
-- Personal Claude Code memory (outside the repo): the agent does not commit (I review and commit
-  each phase myself) and writes the validation log in plain language.
+- Personal Claude Code memory (outside the repo): the same two preferences as in CLAUDE.md about
+  committing and writing the validation log in plain language.
 - No custom skills or other rules files.
 
 **Validation: a case where the agent was wrong**
